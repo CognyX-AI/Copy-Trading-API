@@ -1,4 +1,8 @@
 from xAPIConnector import APIClient, loginCommand 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def make_trade(client):
     args = {
@@ -68,8 +72,8 @@ def close_trade(client, order_number):
 
 
 def main():
-    userId = 15767323
-    password = "Password123"
+    userId = os.environ.get("MASTER_ID")
+    password = os.environ.get("MASTER_PASSWORD")
     
     client = APIClient()
     
