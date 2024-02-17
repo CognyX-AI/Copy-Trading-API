@@ -2,6 +2,7 @@ from xAPIConnector import APIClient, loginCommand
 import os
 from dotenv import load_dotenv
 import time
+from datetime import datetime
 import psycopg2
 
 load_dotenv()
@@ -29,7 +30,7 @@ def create_trade_tables():
         CREATE TABLE IF NOT EXISTS open_trades (
             id SERIAL PRIMARY KEY,
             cmd INTEGER,
-            order_no INTEGER,
+            order_no INTEGER UNIQUE,
             symbol VARCHAR(50),
             volume FLOAT,
             open_price FLOAT,
@@ -45,7 +46,7 @@ def create_trade_tables():
         CREATE TABLE IF NOT EXISTS past_trades (
             id SERIAL PRIMARY KEY,
             cmd INTEGER,
-            order_no INTEGER,
+            order_no INTEGER UNIQUE,
             symbol VARCHAR(50),
             volume FLOAT,
             open_price FLOAT,
@@ -65,18 +66,6 @@ def create_trade_tables():
         print("Error while connecting to PostgreSQL:", error)
 
 
-def insert_data_trades_table(trades_data):   
-    inserted_rows_data = {}
-    removed_comments = []
-    
-    try:
-        trades = trades_data.get('trades', {})
-    except Exception as error:
-        print("Error while connecting to PostgreSQL:", error)
-        
-    return inserted_rows_data, removed_comments
-
-
 def drop_tables(table_names):
     try:
         # Drop each table in the list
@@ -91,26 +80,133 @@ def drop_tables(table_names):
         print("Error while connecting to PostgreSQL:", error)
 
 
-def make_trade(client):    
-    args = {
-            "tradeTransInfo": {
-                "cmd": 0,
-                "comment": "Some text 2",
-                "expiration": 0,
-                "price": 1.4,
-                "sl": 0,
-                "tp": 0,
-                "symbol": "GBPUSD",
-                "type": 0,
-                "volume": 0.1
-            }
-    }
-    
-    response = client.commandExecute("tradeTransaction", args)
-    if response['status']:
-        print("Trade successfully executed.")
-    else:
-        print("Trade execution failed. Error code:", response['errorCode'])
+def insert_data_trades_table(trades_data):
+    inserted_rows_data = []
+    removed_comments = []
+
+    try:
+        for trade in trades_data:
+            if trade.get('close_time') is None:
+                trade['close_time'] = 4102444800000
+
+            cursor.execute("""
+                INSERT INTO open_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (order_no) DO NOTHING
+                RETURNING *
+                """, (
+                    trade.get('cmd', ''),
+                    trade.get('order', 0),
+                    trade.get('symbol', ''),
+                    trade.get('volume', 0.0),
+                    trade.get('open_price', 0),
+                    datetime.fromtimestamp(trade.get('open_time', 0) / 1000),
+                    datetime.fromtimestamp(trade.get('close_time', 4102444800000) / 1000),
+                    trade.get('sl', 0.0),
+                    trade.get('tp', 0.0)
+                )
+            )
+
+            row = cursor.fetchone()
+            if row:
+                inserted_rows_data.append(
+                    {
+                        'cmd': row[1],
+                        'order': row[2],
+                        'symbol': row[3],
+                        'volume': row[4],
+                        'open_price': row[5],
+                        'open_time': row[6].strftime('%Y-%m-%d %H:%M:%S'),  # Corrected date format
+                        'close_time': row[7].strftime('%Y-%m-%d %H:%M:%S'),  # Corrected date format
+                        'sl': row[8],
+                        'tp': row[9],
+                    }
+                )
+
+        # Fetch all order numbers from open_trades
+        cursor.execute("SELECT order_no FROM open_trades")
+        all_order_numbers = [row[0] for row in cursor.fetchall()]
+
+        # Find order numbers not in inserted_rows_data
+        for order_no in all_order_numbers:
+            if order_no not in [row['order'] for row in trades_data]:
+                removed_comments.append(order_no)
+
+        if removed_comments:
+            for comment in removed_comments:
+                cursor.execute("""
+                    INSERT INTO past_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp)
+                    SELECT cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp
+                    FROM open_trades
+                    WHERE order_no = %s
+                """, (comment,))
+
+            # Delete rows from open_trades where order_no is in removed_comments
+            cursor.execute("DELETE FROM open_trades WHERE order_no IN %s", (tuple(removed_comments),))
+
+        conn.commit()
+
+    except Exception as error:
+        print("Error while inserting or moving trades:", error)
+
+    return inserted_rows_data, removed_comments
+
+
+
+def print_open_trades():
+    try:
+        cursor.execute("SELECT * FROM open_trades")
+        rows = cursor.fetchall()
+        
+        if rows:
+            print("Contents of open_trades table:")
+            for row in rows:
+                print(row)
+        else:
+            print("No records found in open_trades table.")
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while fetching data from open_trades table:", error)
+
+
+def print_past_trades():
+    try:
+        cursor.execute("SELECT * FROM past_trades")
+        rows = cursor.fetchall()
+        
+        if rows:
+            print("Contents of past_trades table:")
+            for row in rows:
+                print(row)
+        else:
+            print("No records found in past_trades table.")
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while fetching data from past_trades table:", error)
+
+
+
+def make_trade(user_client, inserted_rows_data):   
+    for inserted_row_data in inserted_rows_data: 
+        args = {
+                "tradeTransInfo": {
+                    "cmd": inserted_row_data['cmd'],
+                    "comment": inserted_row_data['order'],
+                    "expiration": 0,
+                    "price": inserted_row_data['open_price'],
+                    "sl": inserted_row_data['sl'],
+                    "tp": inserted_row_data['tp'],
+                    "symbol": inserted_row_data['symbol'],
+                    "type": 0,
+                    "volume": inserted_row_data['volume']
+                }
+        }
+        
+        response = user_client.commandExecute("tradeTransaction", args)
+        if response['status']:
+            print("Trade successfully executed.")
+        else:
+            print("Trade execution failed. Error code:", response['errorCode'])
 
 
 def get_client(userId, password):    
@@ -122,10 +218,13 @@ def get_client(userId, password):
         print('Login failed. Error code: {0}'.format(loginResponse['errorCode']))
         
 
-def get_order_by_comment(trades, comment):
+def get_order_by_comment(client, comment):
+    trades = get_trades(client)
+    
     for trade in trades:
         if trade['comment'] == comment:
-            return trade['order']
+            return trade
+    
     return None
 
 
@@ -137,25 +236,27 @@ def get_trades(client):
     response = client.commandExecute("getTrades", args)['returnData']
     
     return response
-    #return get_order_by_comment(response, comment)
 
 
-def close_trade(client, order_number):
-    args = {
-        "tradeTransInfo": {
-            "type": 2,
-            "order": order_number,
-            "symbol": "GBPUSD",
-            "price": 1.4,
-            "volume": 0.1
+def close_trade(user_client, removed_comments):
+    for removed_comment in removed_comments:
+        trade_by_comment = get_order_by_comment(user_client, removed_comment)
+        
+        args = {
+            "tradeTransInfo": {
+                "type": 2,
+                "order": trade_by_comment['order'],
+                "symbol": trade_by_comment['comment'],
+            #    "price": 1.4,
+                "volume": trade_by_comment['volume']
+            }
         }
-    }
-    
-    response = client.commandExecute("tradeTransaction", args)
-    if response['status']:
-        print("Trade successfully closed.")
-    else:
-        print("Failed to close trade. Error code:", response['errorCode'])
+        
+        response = user_client.commandExecute("tradeTransaction", args)
+        if response['status']:
+            print("Trade successfully closed.")
+        else:
+            print("Failed to close trade. Error code:", response['errorCode'])
 
 
 def main():
@@ -167,11 +268,13 @@ def main():
     # while True:
     #     time.sleep(10)
 
-    create_trade_tables()
-    trades = get_trades(master_client)
-    #inserted_rows_data, removed_comments = insert_data_trades_table(trades)
-    #make_trade(master_client)
-    #close_trade(client, order) 
+    # drop_tables(['open_trades', 'past_trades'])
+    # create_trade_tables()
+    trades_data = get_trades(master_client)
+    inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
+    
+    make_trade(master_client, inserted_rows_data)
+    close_trade(master_client, removed_comments) 
     
     
 if __name__ == '__main__':
