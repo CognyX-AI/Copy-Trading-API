@@ -29,14 +29,14 @@ def create_trade_tables():
         CREATE TABLE IF NOT EXISTS open_trades (
             id SERIAL PRIMARY KEY,
             cmd INTEGER,
-            order INTEGER,
+            order_no INTEGER,
             symbol VARCHAR(50),
             volume FLOAT,
             open_price FLOAT,
             open_time TIMESTAMP,
-            close_time TIMESTAMP
-            SL FLOAT,
-            TP FLOAT,
+            close_time TIMESTAMP,
+            sl FLOAT,
+            tp FLOAT
         )
         '''
         cursor.execute(create_table_query)    
@@ -45,14 +45,14 @@ def create_trade_tables():
         CREATE TABLE IF NOT EXISTS past_trades (
             id SERIAL PRIMARY KEY,
             cmd INTEGER,
-            order INTEGER,
+            order_no INTEGER,
             symbol VARCHAR(50),
             volume FLOAT,
             open_price FLOAT,
             open_time TIMESTAMP,
-            close_time TIMESTAMP
-            SL FLOAT,
-            TP FLOAT,
+            close_time TIMESTAMP,
+            sl FLOAT,
+            tp FLOAT
         )
         '''
         cursor.execute(create_table_query)    
@@ -167,8 +167,9 @@ def main():
     # while True:
     #     time.sleep(10)
 
+    create_trade_tables()
     trades = get_trades(master_client)
-    inserted_rows_data, removed_comments = insert_data_trades_table(trades)
+    #inserted_rows_data, removed_comments = insert_data_trades_table(trades)
     #make_trade(master_client)
     #close_trade(client, order) 
     
