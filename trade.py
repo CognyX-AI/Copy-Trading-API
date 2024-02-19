@@ -2,11 +2,14 @@ from xAPIConnector import APIClient, loginCommand
 import os
 from dotenv import load_dotenv
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import psycopg2
+import logging
 
 load_dotenv()
 
+logging.basicConfig(filename='Logfile.log', encoding='utf-8', level=logging.DEBUG)
 DB_NAME = os.environ.get("DB_NAME")
 DB_USER = os.environ.get("DB_USER")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
@@ -268,6 +271,8 @@ def make_trade(user_client, inserted_rows_data):
                 print("Trade successfully executed.")
             else:
                 print("Trade execution failed. Error code:", response['errorCode'])
+            
+            time.sleep(1)
     except:
         return
 
@@ -316,13 +321,32 @@ def close_trade(user_client, removed_comments):
                 }
             }
             
-            response = user_client.commandExecute("tradeTransaction", args)
-            if response['status']:
+            order_response = user_client.commandExecute("tradeTransaction", args)['returnData']['order']
+            time.sleep(2)
+            
+            args =  {
+		        "order": order_response,
+	        }
+    
+            response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
+            
+            if response["requestStatus"] in [0, 3]: 
                 print("Trade successfully closed.")
             else:
-                print("Failed to close trade. Error code:", response['errorCode'])
-    except:
-        return
+                args = {
+                    "tradeTransInfo": {
+                        "type": 2,
+                        "order": int(trade_by_comment['order']),
+                        "symbol": trade_by_comment['symbol'],
+                        "price": trade_by_comment['close_price'],
+                        "volume": float(trade_by_comment['volume'])
+                    }
+                }
+                
+                response = user_client.commandExecute("tradeTransaction", args)
+    
+    except Exception as e:
+        logging.error("Error: ", e)
 
 
 def user_trading(user, inserted_rows_data, removed_comments):
@@ -348,21 +372,27 @@ def main():
     master_client = APIClient()
     loginResponse = master_client.execute(loginCommand(userId=master_userId, password=master_password))
     
-    # drop_tables(['open_trades', 'past_trades'])
+    # drop_tables(['open_trades', 'past_trades', 'users'])
     # create_trade_tables()
     # create_user_table()
+    # add_users(15770950, 'Abcd@1234')
+    # add_users(15780436, 'Check@123')
+    # add_users(15780442, 'Bhim@123')
+    # add_users(15780445, 'Password@123')
+    # add_users(15780439, 'Prince@123')
     
     while True:
-        time.sleep(5)
-
         trades_data = get_trades(master_client)
         inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
 
         users = get_all_users()
         
         if inserted_rows_data or removed_comments:
-            for user in users:
-                user_trading(user, inserted_rows_data, removed_comments)
+            with ThreadPoolExecutor(max_workers=len(users)) as executor:
+                for user in users:
+                    executor.submit(user_trading, user, inserted_rows_data, removed_comments)
+        
+        time.sleep(5)
 
     
 if __name__ == '__main__':
