@@ -9,7 +9,12 @@ import logging
 
 load_dotenv()
 
-logging.basicConfig(filename='Logfile.log', encoding='utf-8', level=logging.DEBUG)
+script_logger = logging.getLogger(__name__)
+file_handler = logging.FileHandler('Logfile.log', encoding='utf-8')
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+script_logger.addHandler(file_handler)
+
 DB_NAME = os.environ.get("DB_NAME")
 DB_USER = os.environ.get("DB_USER")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
@@ -346,7 +351,7 @@ def close_trade(user_client, removed_comments):
                 response = user_client.commandExecute("tradeTransaction", args)
     
     except Exception as e:
-        logging.error("Error: ", e)
+        script_logger.error("Error: ", e)
 
 
 def user_trading(user, inserted_rows_data, removed_comments):
