@@ -85,6 +85,22 @@ def create_user_table():
         print("Error while connecting to PostgreSQL:", error)   
 
 
+def add_users(user_id, password):
+    try:
+        # Insert user data into the users table
+        insert_query = '''
+        INSERT INTO users (user_id, password)
+        VALUES (%s, %s)
+        '''
+        cursor.execute(insert_query, (user_id, password))
+
+        conn.commit()
+        print("User added successfully!")
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while adding user to PostgreSQL:", error)
+
+
 def drop_tables(table_names):
     try:
         # Drop each table in the list
@@ -221,6 +237,15 @@ def print_users_trades():
         print("Error while fetching data from users table:", error)
 
 
+def get_all_users():
+    try:
+        cursor.execute("SELECT * FROM users")
+        rows = cursor.fetchall()
+        return rows        
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while fetching data from users table:", error)
+
 def make_trade(user_client, inserted_rows_data):   
     for inserted_row_data in inserted_rows_data: 
         args = {
@@ -303,20 +328,23 @@ def main():
     master_client = APIClient()
     loginResponse = master_client.execute(loginCommand(userId=master_userId, password=master_password))
     
-    # while True:
-    #     time.sleep(10)
-
     # drop_tables(['open_trades', 'past_trades'])
     # create_trade_tables()
-    create_user_table()
-    trades_data = get_trades(master_client)
-    inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
+    # create_user_table()
     
-    print_users_trades()
-    
-    # inserted_rows_data = [{'cmd': 0, 'order': 593539137, 'symbol': 'EURUSD', 'volume': 0.01, 'open_price': 1.0783, 'open_time': '2024-02-19 11:28:40', 'close_time': '2100-01-01 05:30:00', 'sl': 0.0, 'tp': 0.0}]
-    # make_trade(master_client, inserted_rows_data)
-    # close_trade(master_client, ['593539137']) 
+    while True:
+        time.sleep(5)
+
+        trades_data = get_trades(master_client)
+        inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
+
+        users = get_all_users()
+        
+        for user in users:
+            user_client = APIClient()
+            loginResponse = user_client.execute(loginCommand(userId=user[1], password=user[2]))
+            make_trade(user_client, inserted_rows_data)
+            close_trade(user_client, removed_comments) 
     
     
 if __name__ == '__main__':
