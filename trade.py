@@ -6,6 +6,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import psycopg2
 import logging
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+import base64
+
 
 load_dotenv()
 
@@ -93,6 +97,22 @@ def create_user_table():
         print("Error while connecting to PostgreSQL:", error)   
 
 
+def encrypt(text):
+    key = os.environ.get('AES_KEY').encode()
+    cipher = AES.new(key, AES.MODE_ECB)
+    padded_text = pad(text.encode(), AES.block_size)
+    encrypted_text = cipher.encrypt(padded_text)
+    return base64.b64encode(encrypted_text).decode()
+
+def decrypt(encrypted_text):
+    key = os.environ.get('AES_KEY').encode()
+    cipher = AES.new(key, AES.MODE_ECB)
+    encrypted_bytes = base64.b64decode(encrypted_text)
+    decrypted_bytes = cipher.decrypt(encrypted_bytes)
+    unpadded_text = unpad(decrypted_bytes, AES.block_size)
+    return unpadded_text.decode()
+
+
 def add_users(user_id, password):
     try:
         # Insert user data into the users table
@@ -100,7 +120,7 @@ def add_users(user_id, password):
         INSERT INTO users (user_id, password)
         VALUES (%s, %s)
         '''
-        cursor.execute(insert_query, (user_id, password))
+        cursor.execute(insert_query, (user_id, encrypt(password)))
 
         conn.commit()
         print("User added successfully!")
@@ -254,6 +274,7 @@ def get_all_users():
     except (Exception, psycopg2.Error) as error:
         print("Error while fetching data from users table:", error)
 
+
 def make_trade(user_client, inserted_rows_data):   
     try:
         for inserted_row_data in inserted_rows_data: 
@@ -357,7 +378,7 @@ def close_trade(user_client, removed_comments):
 def user_trading(user, inserted_rows_data, removed_comments):
     try:
         user_client = APIClient()
-        loginResponse = user_client.execute(loginCommand(userId=user[1], password=user[2]))
+        loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
                     
         if inserted_rows_data:
             make_trade(user_client, inserted_rows_data)
