@@ -66,6 +66,25 @@ def create_trade_tables():
         print("Error while connecting to PostgreSQL:", error)
 
 
+def create_user_table():
+    try:
+        # Create table if not exists
+        create_table_query = '''
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER UNIQUE,
+            password VARCHAR(50)
+        )
+        '''
+        cursor.execute(create_table_query)    
+    
+        conn.commit()
+        print("User table created successfully!")
+        
+    except (Exception, psycopg2.Error) as error:
+        print("Error while connecting to PostgreSQL:", error)   
+
+
 def drop_tables(table_names):
     try:
         # Drop each table in the list
@@ -186,6 +205,21 @@ def print_past_trades():
         print("Error while fetching data from past_trades table:", error)
 
 
+def print_users_trades():
+    try:
+        cursor.execute("SELECT * FROM users")
+        rows = cursor.fetchall()
+        
+        if rows:
+            print("Contents of users table:")
+            for row in rows:
+                print(row)
+        else:
+            print("No records found in users table.")
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while fetching data from users table:", error)
+
 
 def make_trade(user_client, inserted_rows_data):   
     for inserted_row_data in inserted_rows_data: 
@@ -274,8 +308,11 @@ def main():
 
     # drop_tables(['open_trades', 'past_trades'])
     # create_trade_tables()
+    create_user_table()
     trades_data = get_trades(master_client)
     inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
+    
+    print_users_trades()
     
     # inserted_rows_data = [{'cmd': 0, 'order': 593539137, 'symbol': 'EURUSD', 'volume': 0.01, 'open_price': 1.0783, 'open_time': '2024-02-19 11:28:40', 'close_time': '2100-01-01 05:30:00', 'sl': 0.0, 'tp': 0.0}]
     # make_trade(master_client, inserted_rows_data)
