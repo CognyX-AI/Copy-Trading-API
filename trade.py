@@ -247,26 +247,29 @@ def get_all_users():
         print("Error while fetching data from users table:", error)
 
 def make_trade(user_client, inserted_rows_data):   
-    for inserted_row_data in inserted_rows_data: 
-        args = {
-                "tradeTransInfo": {
-                    "cmd": inserted_row_data['cmd'],
-                    "comment": str(inserted_row_data['order']),
-                    "expiration": 0,
-                    "price": inserted_row_data['open_price'],
-                    "sl": inserted_row_data['sl'],
-                    "tp": inserted_row_data['tp'],
-                    "symbol": inserted_row_data['symbol'],
-                    "type": 0,
-                    "volume": inserted_row_data['volume']
-                }
-        }
-        
-        response = user_client.commandExecute("tradeTransaction", args)
-        if response['status']:
-            print("Trade successfully executed.")
-        else:
-            print("Trade execution failed. Error code:", response['errorCode'])
+    try:
+        for inserted_row_data in inserted_rows_data: 
+            args = {
+                    "tradeTransInfo": {
+                        "cmd": inserted_row_data['cmd'],
+                        "comment": str(inserted_row_data['order']),
+                        "expiration": 0,
+                        "price": inserted_row_data['open_price'],
+                        "sl": inserted_row_data['sl'],
+                        "tp": inserted_row_data['tp'],
+                        "symbol": inserted_row_data['symbol'],
+                        "type": 0,
+                        "volume": inserted_row_data['volume']
+                    }
+            }
+            
+            response = user_client.commandExecute("tradeTransaction", args)
+            if response['status']:
+                print("Trade successfully executed.")
+            else:
+                print("Trade execution failed. Error code:", response['errorCode'])
+    except:
+        return
 
 
 def get_client(userId, password):    
@@ -298,29 +301,46 @@ def get_trades(client):
     return response
 
 
-def close_trade(user_client, removed_comments):
-    for removed_comment in removed_comments:
-        trade_by_comment = get_order_by_comment(user_client, removed_comment)
-        print(trade_by_comment)
-        
-        args = {
-            "tradeTransInfo": {
-                "type": 2,
-                "order": int(trade_by_comment['order']),
-                "symbol": trade_by_comment['symbol'],
-                "price": trade_by_comment['close_price'],
-                "volume": float(trade_by_comment['volume'])
+def close_trade(user_client, removed_comments):    
+    try:
+        for removed_comment in removed_comments:
+            trade_by_comment = get_order_by_comment(user_client, str(removed_comment))
+            
+            args = {
+                "tradeTransInfo": {
+                    "type": 2,
+                    "order": int(trade_by_comment['order']),
+                    "symbol": trade_by_comment['symbol'],
+                    "price": trade_by_comment['close_price'],
+                    "volume": float(trade_by_comment['volume'])
+                }
             }
-        }
-        
-        print(args)
-        
-        response = user_client.commandExecute("tradeTransaction", args)
-        if response['status']:
-            print("Trade successfully closed.")
-        else:
-            print("Failed to close trade. Error code:", response['errorCode'])
+            
+            response = user_client.commandExecute("tradeTransaction", args)
+            if response['status']:
+                print("Trade successfully closed.")
+            else:
+                print("Failed to close trade. Error code:", response['errorCode'])
+    except:
+        return
 
+
+def user_trading(user, inserted_rows_data, removed_comments):
+    try:
+        user_client = APIClient()
+        loginResponse = user_client.execute(loginCommand(userId=user[1], password=user[2]))
+                    
+        if inserted_rows_data:
+            make_trade(user_client, inserted_rows_data)
+        
+        if removed_comments:
+            close_trade(user_client, removed_comments) 
+                    
+        user_client.disconnect()
+                
+    except Exception as e:
+        print(f"Error: {e}")
+    
 
 def main():
     master_userId = os.environ.get("MASTER_ID")
@@ -340,12 +360,10 @@ def main():
 
         users = get_all_users()
         
-        for user in users:
-            user_client = APIClient()
-            loginResponse = user_client.execute(loginCommand(userId=user[1], password=user[2]))
-            make_trade(user_client, inserted_rows_data)
-            close_trade(user_client, removed_comments) 
-    
+        if inserted_rows_data or removed_comments:
+            for user in users:
+                user_trading(user, inserted_rows_data, removed_comments)
+
     
 if __name__ == '__main__':
     main()
