@@ -82,10 +82,11 @@ def create_user_table():
     try:
         # Create table if not exists
         create_table_query = '''
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE IF NOT EXISTS users_credentials_xstation (
             id SERIAL PRIMARY KEY,
-            user_id INTEGER UNIQUE,
-            password VARCHAR(50)
+            xstation_id INTEGER UNIQUE,
+            password VARCHAR(255),
+            user_id_id INTEGER
         )
         '''
         cursor.execute(create_table_query)    
@@ -117,7 +118,7 @@ def add_users(user_id, password):
     try:
         # Insert user data into the users table
         insert_query = '''
-        INSERT INTO users (user_id, password)
+        INSERT INTO users (xstation_id, password)
         VALUES (%s, %s)
         '''
         cursor.execute(insert_query, (user_id, encrypt(password)))
@@ -251,28 +252,28 @@ def print_past_trades():
 
 def print_users_trades():
     try:
-        cursor.execute("SELECT * FROM users")
+        cursor.execute("SELECT * FROM users_credentials_xstation")
         rows = cursor.fetchall()
         
         if rows:
-            print("Contents of users table:")
+            print("Contents of users_credentials_xstation table:")
             for row in rows:
                 print(row)
         else:
-            print("No records found in users table.")
+            print("No records found in users_credentials_xstationusers table.")
 
     except (Exception, psycopg2.Error) as error:
-        print("Error while fetching data from users table:", error)
+        print("Error while fetching data from users_credentials_xstation table:", error)
 
 
 def get_all_users():
     try:
-        cursor.execute("SELECT * FROM users")
+        cursor.execute("SELECT * FROM users_credentials_xstation")
         rows = cursor.fetchall()
         return rows        
 
     except (Exception, psycopg2.Error) as error:
-        print("Error while fetching data from users table:", error)
+        print("Error while fetching data from users_credentials_xstation table:", error)
 
 
 def make_trade(user_client, inserted_rows_data):   
@@ -398,7 +399,7 @@ def main():
     master_client = APIClient()
     loginResponse = master_client.execute(loginCommand(userId=master_userId, password=master_password))
     
-    # drop_tables(['open_trades', 'past_trades', 'users'])
+    # drop_tables(['open_trades', 'past_trades', 'users_credentials_xstation'])
     # create_trade_tables()
     # create_user_table()
     # add_users(15770950, 'Abcd@1234')
