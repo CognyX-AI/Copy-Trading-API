@@ -136,13 +136,14 @@ def insert_data_trades_table(trades_data):
             for comment in removed_comments:
                 cursor.execute("""
                     INSERT INTO past_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp)
-                    SELECT cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp
+                    SELECT cmd, order_no, symbol, volume, open_price, open_time, now(), sl, tp
                     FROM open_trades
                     WHERE order_no = %s
                 """, (comment,))
 
             # Delete rows from open_trades where order_no is in removed_comments
             cursor.execute("DELETE FROM open_trades WHERE order_no IN %s", (tuple(removed_comments),))
+
 
         conn.commit()
 
@@ -191,7 +192,7 @@ def make_trade(user_client, inserted_rows_data):
         args = {
                 "tradeTransInfo": {
                     "cmd": inserted_row_data['cmd'],
-                    "comment": inserted_row_data['order'],
+                    "comment": str(inserted_row_data['order']),
                     "expiration": 0,
                     "price": inserted_row_data['open_price'],
                     "sl": inserted_row_data['sl'],
@@ -241,16 +242,19 @@ def get_trades(client):
 def close_trade(user_client, removed_comments):
     for removed_comment in removed_comments:
         trade_by_comment = get_order_by_comment(user_client, removed_comment)
+        print(trade_by_comment)
         
         args = {
             "tradeTransInfo": {
                 "type": 2,
-                "order": trade_by_comment['order'],
-                "symbol": trade_by_comment['comment'],
-            #    "price": 1.4,
-                "volume": trade_by_comment['volume']
+                "order": int(trade_by_comment['order']),
+                "symbol": trade_by_comment['symbol'],
+                "price": trade_by_comment['close_price'],
+                "volume": float(trade_by_comment['volume'])
             }
         }
+        
+        print(args)
         
         response = user_client.commandExecute("tradeTransaction", args)
         if response['status']:
@@ -273,8 +277,9 @@ def main():
     trades_data = get_trades(master_client)
     inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
     
-    make_trade(master_client, inserted_rows_data)
-    close_trade(master_client, removed_comments) 
+    # inserted_rows_data = [{'cmd': 0, 'order': 593539137, 'symbol': 'EURUSD', 'volume': 0.01, 'open_price': 1.0783, 'open_time': '2024-02-19 11:28:40', 'close_time': '2100-01-01 05:30:00', 'sl': 0.0, 'tp': 0.0}]
+    # make_trade(master_client, inserted_rows_data)
+    # close_trade(master_client, ['593539137']) 
     
     
 if __name__ == '__main__':
