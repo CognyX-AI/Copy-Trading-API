@@ -281,7 +281,7 @@ def print_users_trades():
 
 def get_all_users():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_xstation")
+        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE")
         rows = cursor_user.fetchall()
         return rows        
 
@@ -369,6 +369,9 @@ def close_trade(user_client, removed_comments):
     try:
         for removed_comment in removed_comments:
             trade_by_comment = get_order_by_comment(user_client, str(removed_comment))
+
+            if not trade_by_comment:
+                continue
             
             args = {
                 "tradeTransInfo": {
@@ -409,16 +412,29 @@ def close_trade(user_client, removed_comments):
         send_slack_message(e)
 
 
+def update_verification(xstation_id, verification_status):
+    try:
+        print("xstation_id: ", xstation_id)
+        cursor_user.execute(f"UPDATE users_credentials_xstation SET verification = {verification_status} WHERE xstation_id = {xstation_id}")
+        conn_user.commit()
+    except (Exception, psycopg2.Error) as error:
+        print("Error while updating verification status:", error)
+
+
 def user_trading(user, inserted_rows_data, removed_comments):
     try:
         user_client = APIClient()
         loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
-                    
-        if inserted_rows_data:
-            make_trade(user_client, inserted_rows_data)
+                  
+        if loginResponse['status']:  
+            if inserted_rows_data:
+                make_trade(user_client, inserted_rows_data)
+            
+            if removed_comments:
+                close_trade(user_client, removed_comments) 
         
-        if removed_comments:
-            close_trade(user_client, removed_comments) 
+        else:
+            update_verification(user[1], False)    
                     
         user_client.disconnect()
                 
@@ -449,7 +465,7 @@ def main():
 
             users = get_all_users()
             
-            if inserted_rows_data or removed_comments:
+            if users and (inserted_rows_data or removed_comments):
                 with ThreadPoolExecutor(max_workers=len(users)) as executor:
                     for user in users:
                         executor.submit(user_trading, user, inserted_rows_data, removed_comments)
