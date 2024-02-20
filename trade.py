@@ -20,6 +20,7 @@ file_handler.setFormatter(formatter)
 script_logger.addHandler(file_handler)
 
 DB_NAME = os.environ.get("DB_NAME")
+DB_NAME_MAIN = os.environ.get("DB_NAME_MAIN")
 DB_USER = os.environ.get("DB_USER")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 DB_HOST = os.environ.get("DB_HOST")
@@ -34,6 +35,16 @@ conn = psycopg2.connect(
 )
 
 cursor = conn.cursor()
+
+conn_user = psycopg2.connect(
+    dbname=DB_NAME_MAIN,
+    user=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=DB_PORT
+)
+
+cursor_user = conn_user.cursor()
 
 def create_trade_tables():
     try:
@@ -252,8 +263,8 @@ def print_past_trades():
 
 def print_users_trades():
     try:
-        cursor.execute("SELECT * FROM users_credentials_xstation")
-        rows = cursor.fetchall()
+        cursor_user.execute("SELECT * FROM users_credentials_xstation")
+        rows = cursor_user.fetchall()
         
         if rows:
             print("Contents of users_credentials_xstation table:")
@@ -268,8 +279,8 @@ def print_users_trades():
 
 def get_all_users():
     try:
-        cursor.execute("SELECT * FROM users_credentials_xstation")
-        rows = cursor.fetchall()
+        cursor_user.execute("SELECT * FROM users_credentials_xstation")
+        rows = cursor_user.fetchall()
         return rows        
 
     except (Exception, psycopg2.Error) as error:
@@ -407,7 +418,7 @@ def main():
     # add_users(15780442, 'Bhim@123')
     # add_users(15780445, 'Password@123')
     # add_users(15780439, 'Prince@123')
-    
+     
     while True:
         trades_data = get_trades(master_client)
         inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
