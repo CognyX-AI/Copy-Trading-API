@@ -9,6 +9,8 @@ import logging
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import base64
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 
 load_dotenv()
@@ -287,6 +289,23 @@ def get_all_users():
         print("Error while fetching data from users_credentials_xstation table:", error)
 
 
+def send_slack_message(e):
+    slack_token = os.environ.get("SLACK_API_TOKEN")
+    channel_id = os.environ.get("CHANNEL_ID")
+        
+    try:
+        client = WebClient(token=slack_token)
+        
+        message = f"Error encountered: {e}"
+        response = client.chat_postMessage(
+            channel=channel_id,
+            text=message
+        )
+    
+    except SlackApiError as e:
+            print(f"Slack API error: {e.response['error']}")
+
+
 def make_trade(user_client, inserted_rows_data):   
     try:
         for inserted_row_data in inserted_rows_data: 
@@ -311,8 +330,10 @@ def make_trade(user_client, inserted_rows_data):
                 print("Trade execution failed. Error code:", response['errorCode'])
             
             time.sleep(1)
-    except:
-        return
+    
+    except Exception as e:
+        script_logger.error("Error: ", e)
+        send_slack_message(e)
 
 
 def get_client(userId, password):    
@@ -385,6 +406,7 @@ def close_trade(user_client, removed_comments):
     
     except Exception as e:
         script_logger.error("Error: ", e)
+        send_slack_message(e)
 
 
 def user_trading(user, inserted_rows_data, removed_comments):
@@ -401,7 +423,8 @@ def user_trading(user, inserted_rows_data, removed_comments):
         user_client.disconnect()
                 
     except Exception as e:
-        print(f"Error: {e}")
+        script_logger.error("Error: ", e)
+        send_slack_message(e)
     
 
 def main():
@@ -418,20 +441,24 @@ def main():
     # add_users(15780442, 'Bhim@123')
     # add_users(15780445, 'Password@123')
     # add_users(15780439, 'Prince@123')
-     
+    
     while True:
-        trades_data = get_trades(master_client)
-        inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
+        try:
+            trades_data = get_trades(master_client)
+            inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
 
-        users = get_all_users()
+            users = get_all_users()
+            
+            if inserted_rows_data or removed_comments:
+                with ThreadPoolExecutor(max_workers=len(users)) as executor:
+                    for user in users:
+                        executor.submit(user_trading, user, inserted_rows_data, removed_comments)
+            
+            time.sleep(5)
         
-        if inserted_rows_data or removed_comments:
-            with ThreadPoolExecutor(max_workers=len(users)) as executor:
-                for user in users:
-                    executor.submit(user_trading, user, inserted_rows_data, removed_comments)
-        
-        time.sleep(5)
-
+        except Exception as e:
+            script_logger.error("Error: ", e)
+            send_slack_message(e)
     
 if __name__ == '__main__':
     main()
