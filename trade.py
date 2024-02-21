@@ -11,6 +11,7 @@ from Crypto.Util.Padding import pad, unpad
 import base64
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+import pandas as pd
 
 
 load_dotenv()
@@ -95,11 +96,10 @@ def create_user_table():
     try:
         # Create table if not exists
         create_table_query = '''
-        CREATE TABLE IF NOT EXISTS users_credentials_xstation (
+        CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
             xstation_id INTEGER UNIQUE,
-            password VARCHAR(255),
-            user_id_id INTEGER
+            password VARCHAR(255)
         )
         '''
         cursor.execute(create_table_query)    
@@ -289,6 +289,16 @@ def get_all_users():
         print("Error while fetching data from users_credentials_xstation table:", error)
 
 
+def get_all_users_test():
+    try:
+        cursor.execute("SELECT * FROM users")
+        rows = cursor.fetchall()
+        return rows        
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while fetching data from users table:", error)
+
+
 def send_slack_message(e):
     slack_token = os.environ.get("SLACK_API_TOKEN")
     channel_id = os.environ.get("CHANNEL_ID")
@@ -306,7 +316,7 @@ def send_slack_message(e):
             print(f"Slack API error: {e.response['error']}")
 
 
-def make_trade(user_client, inserted_rows_data):   
+def make_trade(user_client, inserted_rows_data, userId):   
     try:
         for inserted_row_data in inserted_rows_data: 
             args = {
@@ -332,8 +342,8 @@ def make_trade(user_client, inserted_rows_data):
             time.sleep(1)
     
     except Exception as e:
-        script_logger.error("Error: ", e)
-        send_slack_message(e)
+        script_logger.error(f"Error: {e} for userId: {userId}")
+        send_slack_message(f"Error: {e} for userId: {userId}")
 
 
 def get_client(userId, password):    
@@ -365,7 +375,7 @@ def get_trades(client):
     return response
 
 
-def close_trade(user_client, removed_comments):    
+def close_trade(user_client, removed_comments, userId):    
     try:
         for removed_comment in removed_comments:
             trade_by_comment = get_order_by_comment(user_client, str(removed_comment))
@@ -408,8 +418,8 @@ def close_trade(user_client, removed_comments):
                 response = user_client.commandExecute("tradeTransaction", args)
     
     except Exception as e:
-        script_logger.error("Error: ", e)
-        send_slack_message(e)
+        script_logger.error(f"Error: {e} for userId: {userId}")
+        send_slack_message(f"Error: {e} for userId: {userId}")
 
 
 def update_verification(xstation_id, verification_status):
@@ -422,25 +432,36 @@ def update_verification(xstation_id, verification_status):
 
 
 def user_trading(user, inserted_rows_data, removed_comments):
+    user_client = None  # Initialize user_client outside the try block
     try:
         user_client = APIClient()
         loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
                   
         if loginResponse['status']:  
             if inserted_rows_data:
-                make_trade(user_client, inserted_rows_data)
+                make_trade(user_client, inserted_rows_data, user[1])
             
             if removed_comments:
-                close_trade(user_client, removed_comments) 
+                close_trade(user_client, removed_comments, user[1]) 
         
         else:
+            print("Failed: ", user[1])
             update_verification(user[1], False)    
                     
-        user_client.disconnect()
-                
     except Exception as e:
         script_logger.error("Error: ", e)
         send_slack_message(e)
+    finally:
+        if user_client:
+            user_client.disconnect()
+
+def load_demo_users(file):
+    df = pd.read_csv(file)
+    for _, row in df.iterrows():
+        user_id = row['User ID']
+        password = row['Password']
+        add_users(user_id, password)
+    
     
 
 def main():
@@ -449,26 +470,68 @@ def main():
     master_client = APIClient()
     loginResponse = master_client.execute(loginCommand(userId=master_userId, password=master_password))
     
-    # drop_tables(['open_trades', 'past_trades', 'users_credentials_xstation'])
-    # create_trade_tables()
+    drop_tables(['open_trades', 'past_trades'])
+    create_trade_tables()
+    
+    # drop_tables(['users'])
     # create_user_table()
+    # load_demo_users("xStation_Credentials.csv")
+
     # add_users(15770950, 'Abcd@1234')
     # add_users(15780436, 'Check@123')
     # add_users(15780442, 'Bhim@123')
     # add_users(15780445, 'Password@123')
     # add_users(15780439, 'Prince@123')
     
+    # add_users(15792177, 'Check@123')
+    
+    # add_users(15792180, 'Check@123')
+    # add_users(15792191, 'Check@123')
+    # add_users(15792193, 'Check@123')
+    # add_users(15792200, 'Check@123')
+    # add_users(15792205, 'Check@123')
+
+    # add_users(15792273, 'Check@123')
+    # add_users(15792266, 'Check@123')
+    # add_users(15792277, 'Check@123')
+    # add_users(15792281, 'Check@123')
+    # add_users(15792284, 'Check@123')
+    # add_users(15792299, 'Check@123')
+    # add_users(15792300, 'Check@123')
+    # add_users(15792303, 'Check@123')
+    # add_users(15792304, 'Check@123')
+    # add_users(15792312, 'Check@123')
+    
+    # add_users(15792325, 'Check@123')
+    # add_users(15792330, 'Check@123')
+    # add_users(15792337, 'Check@123')
+    # add_users(15792342, 'Check@123')
+    # add_users(15792348, 'Check@123')
+    
+    # add_users(15792357, 'Check@123')
+    # add_users(15792363, 'Check@123')
+    # add_users(15792371, 'Check@123')
+    
+    # add_users(15792377, 'Check@123')
+    # add_users(15792392, 'Check@123')
+    # add_users(15792387, 'Check@123')
+    # add_users(15792409, 'Check@123')
+    
+    
     while True:
         try:
             trades_data = get_trades(master_client)
             inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
-
-            users = get_all_users()
             
-            if users and (inserted_rows_data or removed_comments):
-                with ThreadPoolExecutor(max_workers=len(users)) as executor:
-                    for user in users:
-                        executor.submit(user_trading, user, inserted_rows_data, removed_comments)
+            if inserted_rows_data or removed_comments:
+                
+                # users = get_all_users()
+                users = get_all_users_test()
+                
+                if users:
+                    with ThreadPoolExecutor(max_workers=len(users)) as executor:
+                        for user in users:
+                            executor.submit(user_trading, user, inserted_rows_data, removed_comments)
             
             time.sleep(5)
         
