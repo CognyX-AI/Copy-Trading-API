@@ -467,7 +467,50 @@ def load_demo_users(file):
         password = row['Password']
         add_users(user_id, password)
     
+
+def update_master_verification(xstation_id, verification_status):
+    try:
+        print("xstation_id: ", xstation_id)
+        cursor_user.execute(f"UPDATE users_credentials_master_xstation SET verification = {verification_status} WHERE xstation_id = {xstation_id}")
+        conn_user.commit()
+    except (Exception, psycopg2.Error) as error:
+        print("Error while updating verification status:", error)
+
+
+def load_masters():
+    try:
+        cursor_user.execute("SELECT * FROM users_credentials_master_xstation WHERE verification = TRUE")
+        rows = cursor_user.fetchall()
+        
+    except (Exception, psycopg2.Error) as error:
+        print("Error while fetching data from users_credentials_master_xstation table:", error)
+        return []
     
+    masters = {}
+    for row in rows:
+        if row[3]:
+            master_client = APIClient()
+            loginResponse = master_client.execute(loginCommand(userId=row[1], password=decrypt(row[2])))
+            
+            if loginResponse['status']:    
+                masters[row[0]] = master_client
+            else: 
+                update_master_verification(row[1])
+                
+                if row[0] in masters.keys():
+                    masters.pop(row[0])
+                    
+                master_client.disconnect() 
+
+    return masters
+
+def disconnect_masters(masters):
+    keys = list(masters.keys())
+    for master in keys:
+        masters[master].disconnect()
+        masters.pop(master)
+        
+    return masters
 
 def main():
     master_userId = os.environ.get("MASTER_ID")
@@ -543,6 +586,7 @@ def main():
         except Exception as e:
             script_logger.error("Error: ", e)
             send_slack_message(e)
+    
     
 if __name__ == '__main__':
     main()
