@@ -334,12 +334,14 @@ def make_trade(user_client, inserted_rows_data, userId):
             }
             
             response = user_client.commandExecute("tradeTransaction", args)
-            if response['status']:
+            
+            if response['status'] == True:
                 print("Trade successfully executed.")
             else:
                 print("Trade execution failed. Error code:", response['errorCode'])
+                send_slack_message(f"Trade failed for userId: {userId}")
             
-            time.sleep(1)
+            time.sleep(2)
     
     except Exception as e:
         script_logger.error(f"Error: {e} for userId: {userId}")
@@ -380,7 +382,7 @@ def close_trade(user_client, removed_comments, userId):
         for removed_comment in removed_comments:
             trade_by_comment = get_order_by_comment(user_client, str(removed_comment))
 
-            if not trade_by_comment:
+            if trade_by_comment is None:
                 continue
             
             args = {
@@ -393,8 +395,11 @@ def close_trade(user_client, removed_comments, userId):
                 }
             }
             
-            order_response = user_client.commandExecute("tradeTransaction", args)['returnData']['order']
+            data = user_client.commandExecute("tradeTransaction", args)['returnData']
+            
             time.sleep(2)
+            
+            order_response = data['order']
             
             args =  {
 		        "order": order_response,
@@ -470,12 +475,12 @@ def main():
     master_client = APIClient()
     loginResponse = master_client.execute(loginCommand(userId=master_userId, password=master_password))
     
-    drop_tables(['open_trades', 'past_trades'])
-    create_trade_tables()
+    # drop_tables(['open_trades', 'past_trades'])
+    # create_trade_tables()
     
     # drop_tables(['users'])
     # create_user_table()
-    # load_demo_users("xStation_Credentials.csv")
+    # load_demo_users("xStation_Credentials_trunc.csv")
 
     # add_users(15770950, 'Abcd@1234')
     # add_users(15780436, 'Check@123')
