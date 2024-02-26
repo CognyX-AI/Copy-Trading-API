@@ -210,7 +210,7 @@ def insert_data_trades_table(trades_data, master_id):
 
         # Find order numbers not in inserted_rows_data
         for order_no in all_order_numbers:
-            if order_no not in [row['order'] for row in inserted_rows_data]:
+            if order_no not in [row['order'] for row in trades_data]:
                 removed_comments.append((order_no, master_id))
 
         if removed_comments:
@@ -536,8 +536,12 @@ def main():
                 
                 for key in master_keys:
                     trades_data = get_trades(masters[key])
-                    inserted_rows_data, removed_comments = insert_data_trades_table(trades_data, key)
+                    inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key)
+                    inserted_rows_data.extend(inserted_rows_data_tmp)
+                    removed_comments.extend(removed_comments_tmp)
                 
+                # print("inserted: ", inserted_rows_data)
+                # print("removed: ", removed_comments)
                 if inserted_rows_data or removed_comments:
                     
                     users = get_all_users()
