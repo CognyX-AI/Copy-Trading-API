@@ -55,7 +55,6 @@ def create_trade_tables():
         create_table_query = '''
         CREATE TABLE IF NOT EXISTS open_trades (
             id SERIAL PRIMARY KEY,
-            master_id INTEGER,
             cmd INTEGER,
             order_no INTEGER UNIQUE,
             symbol VARCHAR(50),
@@ -64,7 +63,8 @@ def create_trade_tables():
             open_time TIMESTAMP,
             close_time TIMESTAMP,
             sl FLOAT,
-            tp FLOAT
+            tp FLOAT,
+            master_id INTEGER
         )
         '''
         cursor.execute(create_table_query)    
@@ -72,7 +72,6 @@ def create_trade_tables():
         create_table_query = '''
         CREATE TABLE IF NOT EXISTS past_trades (
             id SERIAL PRIMARY KEY,
-            master_id INTEGER,
             cmd INTEGER,
             order_no INTEGER UNIQUE,
             symbol VARCHAR(50),
@@ -81,7 +80,8 @@ def create_trade_tables():
             open_time TIMESTAMP,
             close_time TIMESTAMP,
             sl FLOAT,
-            tp FLOAT
+            tp FLOAT,
+            master_id INTEGER
         )
         '''
         cursor.execute(create_table_query)    
@@ -189,6 +189,7 @@ def insert_data_trades_table(trades_data, master_id):
 
             row = cursor.fetchone()
             if row:
+                print(row)
                 inserted_rows_data.append(
                     {
                         'cmd': row[1],
@@ -203,7 +204,7 @@ def insert_data_trades_table(trades_data, master_id):
                         'master_id' : master_id
                     }
                 )
-
+                
         cursor.execute("SELECT order_no FROM open_trades WHERE master_id = %s", (master_id,))
         all_order_numbers = [row[0] for row in cursor.fetchall()]
 
@@ -318,32 +319,33 @@ def send_slack_message(e):
             print(f"Slack API error: {e.response['error']}")
 
 
-def make_trade(user_client, inserted_rows_data, userId):   
+def make_trade(user_client, inserted_rows_data, userId, master_id):   
     try:
         for inserted_row_data in inserted_rows_data: 
-            args = {
-                    "tradeTransInfo": {
-                        "cmd": inserted_row_data['cmd'],
-                        "comment": str(inserted_row_data['order']),
-                        "expiration": 0,
-                        "price": inserted_row_data['open_price'],
-                        "sl": inserted_row_data['sl'],
-                        "tp": inserted_row_data['tp'],
-                        "symbol": inserted_row_data['symbol'],
-                        "type": 0,
-                        "volume": inserted_row_data['volume']
-                    }
-            }
-            
-            response = user_client.commandExecute("tradeTransaction", args)
-            
-            if response['status'] == True:
-                print("Trade successfully executed.")
-            else:
-                print("Trade execution failed. Error code:", response['errorCode'])
-                send_slack_message(f"Trade failed for userId: {userId}")
-            
-            time.sleep(2)
+            if inserted_row_data['master_id'] == master_id:
+                args = {
+                        "tradeTransInfo": {
+                            "cmd": inserted_row_data['cmd'],
+                            "comment": str(inserted_row_data['order']),
+                            "expiration": 0,
+                            "price": inserted_row_data['open_price'],
+                            "sl": inserted_row_data['sl'],
+                            "tp": inserted_row_data['tp'],
+                            "symbol": inserted_row_data['symbol'],
+                            "type": 0,
+                            "volume": inserted_row_data['volume']
+                        }
+                }
+                
+                response = user_client.commandExecute("tradeTransaction", args)
+                
+                if response['status'] == True:
+                    print("Trade successfully executed.")
+                else:
+                    print("Trade execution failed. Error code:", response['errorCode'])
+                    send_slack_message(f"Trade failed for userId: {userId}")
+                
+                time.sleep(2)
     
     except Exception as e:
         script_logger.error(f"Error: {e} for userId: {userId}")
@@ -379,39 +381,15 @@ def get_trades(client):
     return response
 
 
-def close_trade(user_client, removed_comments, userId):    
+def close_trade(user_client, removed_comments, userId, master_id):    
     try:
         for removed_comment in removed_comments:
-            trade_by_comment = get_order_by_comment(user_client, str(removed_comment))
+            if removed_comment[1]:
+                trade_by_comment = get_order_by_comment(user_client, str(removed_comment[0]))
 
-            if trade_by_comment is None:
-                continue
-            
-            args = {
-                "tradeTransInfo": {
-                    "type": 2,
-                    "order": int(trade_by_comment['order']),
-                    "symbol": trade_by_comment['symbol'],
-                    "price": trade_by_comment['close_price'],
-                    "volume": float(trade_by_comment['volume'])
-                }
-            }
-            
-            data = user_client.commandExecute("tradeTransaction", args)['returnData']
-            
-            time.sleep(2)
-            
-            order_response = data['order']
-            
-            args =  {
-		        "order": order_response,
-	        }
-    
-            response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
-            
-            if response["requestStatus"] in [0, 3]: 
-                print("Trade successfully closed.")
-            else:
+                if trade_by_comment is None:
+                    continue
+                
                 args = {
                     "tradeTransInfo": {
                         "type": 2,
@@ -422,7 +400,32 @@ def close_trade(user_client, removed_comments, userId):
                     }
                 }
                 
-                response = user_client.commandExecute("tradeTransaction", args)
+                data = user_client.commandExecute("tradeTransaction", args)['returnData']
+                
+                time.sleep(2)
+                
+                order_response = data['order']
+                
+                args =  {
+                    "order": order_response,
+                }
+        
+                response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
+                
+                if response["requestStatus"] in [0, 3]: 
+                    print("Trade successfully closed.")
+                else:
+                    args = {
+                        "tradeTransInfo": {
+                            "type": 2,
+                            "order": int(trade_by_comment['order']),
+                            "symbol": trade_by_comment['symbol'],
+                            "price": trade_by_comment['close_price'],
+                            "volume": float(trade_by_comment['volume'])
+                        }
+                    }
+                    
+                    response = user_client.commandExecute("tradeTransaction", args)
     
     except Exception as e:
         script_logger.error(f"Error: {e} for userId: {userId}")
@@ -443,13 +446,14 @@ def user_trading(user, inserted_rows_data, removed_comments):
     try:
         user_client = APIClient()
         loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
+        master_id = user[5]         
                   
         if loginResponse['status']:  
             if inserted_rows_data:
-                make_trade(user_client, inserted_rows_data, user[1])
+                make_trade(user_client, inserted_rows_data, user[1], master_id)
             
             if removed_comments:
-                close_trade(user_client, removed_comments, user[1]) 
+                close_trade(user_client, removed_comments, user[1], master_id) 
         
         else:
             print("Failed: ", user[1])
