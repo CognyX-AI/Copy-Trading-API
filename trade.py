@@ -55,6 +55,7 @@ def create_trade_tables():
         create_table_query = '''
         CREATE TABLE IF NOT EXISTS open_trades (
             id SERIAL PRIMARY KEY,
+            master_id INTEGER,
             cmd INTEGER,
             order_no INTEGER UNIQUE,
             symbol VARCHAR(50),
@@ -71,6 +72,7 @@ def create_trade_tables():
         create_table_query = '''
         CREATE TABLE IF NOT EXISTS past_trades (
             id SERIAL PRIMARY KEY,
+            master_id INTEGER,
             cmd INTEGER,
             order_no INTEGER UNIQUE,
             symbol VARCHAR(50),
@@ -157,7 +159,7 @@ def drop_tables(table_names):
         print("Error while connecting to PostgreSQL:", error)
 
 
-def insert_data_trades_table(trades_data):
+def insert_data_trades_table(trades_data, master_id):
     inserted_rows_data = []
     removed_comments = []
 
@@ -167,8 +169,8 @@ def insert_data_trades_table(trades_data):
                 trade['close_time'] = 4102444800000
 
             cursor.execute("""
-                INSERT INTO open_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO open_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp, master_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (order_no) DO NOTHING
                 RETURNING *
                 """, (
@@ -180,7 +182,8 @@ def insert_data_trades_table(trades_data):
                     datetime.fromtimestamp(trade.get('open_time', 0) / 1000),
                     datetime.fromtimestamp(trade.get('close_time', 4102444800000) / 1000),
                     trade.get('sl', 0.0),
-                    trade.get('tp', 0.0)
+                    trade.get('tp', 0.0),
+                    master_id
                 )
             )
 
@@ -197,30 +200,29 @@ def insert_data_trades_table(trades_data):
                         'close_time': row[7].strftime('%Y-%m-%d %H:%M:%S'),  # Corrected date format
                         'sl': row[8],
                         'tp': row[9],
+                        'master_id' : master_id
                     }
                 )
 
-        # Fetch all order numbers from open_trades
-        cursor.execute("SELECT order_no FROM open_trades")
+        cursor.execute("SELECT order_no FROM open_trades WHERE master_id = %s", (master_id,))
         all_order_numbers = [row[0] for row in cursor.fetchall()]
 
         # Find order numbers not in inserted_rows_data
         for order_no in all_order_numbers:
-            if order_no not in [row['order'] for row in trades_data]:
-                removed_comments.append(order_no)
+            if order_no not in [row['order'] for row in inserted_rows_data]:
+                removed_comments.append((order_no, master_id))
 
         if removed_comments:
             for comment in removed_comments:
                 cursor.execute("""
-                    INSERT INTO past_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp)
-                    SELECT cmd, order_no, symbol, volume, open_price, open_time, now(), sl, tp
+                    INSERT INTO past_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp, master_id)
+                    SELECT cmd, order_no, symbol, volume, open_price, open_time, now(), sl, tp, master_id
                     FROM open_trades
-                    WHERE order_no = %s
-                """, (comment,))
+                    WHERE order_no = %s AND master_id = %s
+                """, comment)
 
             # Delete rows from open_trades where order_no is in removed_comments
-            cursor.execute("DELETE FROM open_trades WHERE order_no IN %s", (tuple(removed_comments),))
-
+            cursor.execute("DELETE FROM open_trades WHERE (order_no, master_id) IN %s", (tuple(removed_comments),))
 
         conn.commit()
 
@@ -513,75 +515,36 @@ def disconnect_masters(masters):
     return masters
 
 def main():
-    master_userId = os.environ.get("MASTER_ID")
-    master_password = os.environ.get("MASTER_PASSWORD")
-    master_client = APIClient()
-    loginResponse = master_client.execute(loginCommand(userId=master_userId, password=master_password))
+    masters = load_masters()
     
-    # drop_tables(['open_trades', 'past_trades'])
-    # create_trade_tables()
+    drop_tables(['open_trades', 'past_trades'])
+    create_trade_tables()
     
     # drop_tables(['users'])
     # create_user_table()
     # load_demo_users("xStation_Credentials_trunc.csv")
-
-    # add_users(15770950, 'Abcd@1234')
-    # add_users(15780436, 'Check@123')
-    # add_users(15780442, 'Bhim@123')
-    # add_users(15780445, 'Password@123')
-    # add_users(15780439, 'Prince@123')
-    
-    # add_users(15792177, 'Check@123')
-    
-    # add_users(15792180, 'Check@123')
-    # add_users(15792191, 'Check@123')
-    # add_users(15792193, 'Check@123')
-    # add_users(15792200, 'Check@123')
-    # add_users(15792205, 'Check@123')
-
-    # add_users(15792273, 'Check@123')
-    # add_users(15792266, 'Check@123')
-    # add_users(15792277, 'Check@123')
-    # add_users(15792281, 'Check@123')
-    # add_users(15792284, 'Check@123')
-    # add_users(15792299, 'Check@123')
-    # add_users(15792300, 'Check@123')
-    # add_users(15792303, 'Check@123')
-    # add_users(15792304, 'Check@123')
-    # add_users(15792312, 'Check@123')
-    
-    # add_users(15792325, 'Check@123')
-    # add_users(15792330, 'Check@123')
-    # add_users(15792337, 'Check@123')
-    # add_users(15792342, 'Check@123')
-    # add_users(15792348, 'Check@123')
-    
-    # add_users(15792357, 'Check@123')
-    # add_users(15792363, 'Check@123')
-    # add_users(15792371, 'Check@123')
-    
-    # add_users(15792377, 'Check@123')
-    # add_users(15792392, 'Check@123')
-    # add_users(15792387, 'Check@123')
-    # add_users(15792409, 'Check@123')
-    
     
     while True:
         try:
-            trades_data = get_trades(master_client)
-            inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
-            
-            if inserted_rows_data or removed_comments:
+            if masters:
+                inserted_rows_data, removed_comments = [], []
+                master_keys = list(masters.keys())
                 
-                # users = get_all_users()
-                users = get_all_users_test()
+                for key in master_keys:
+                    trades_data = get_trades(masters[key])
+                    inserted_rows_data, removed_comments = insert_data_trades_table(trades_data, key)
                 
-                if users:
-                    with ThreadPoolExecutor(max_workers=len(users)) as executor:
-                        for user in users:
-                            executor.submit(user_trading, user, inserted_rows_data, removed_comments)
-            
-            time.sleep(5)
+                if inserted_rows_data or removed_comments:
+                    
+                    users = get_all_users()
+                    # users = get_all_users_test()
+                    
+                    if users:
+                        with ThreadPoolExecutor(max_workers=len(users)) as executor:
+                            for user in users:
+                                executor.submit(user_trading, user, inserted_rows_data, removed_comments)
+                
+                time.sleep(5)
         
         except Exception as e:
             script_logger.error("Error: ", e)
