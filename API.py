@@ -10,7 +10,7 @@ def check_master(user_id, password):
     
     return loginResponse['status']
 
-def check_user(user_id, password, min_deposit):
+def check_user(user_id, password):
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
     client.disconnect()
@@ -36,8 +36,7 @@ def login_user():
     data = request.json
     user_id = data['user_id']
     password = data['password']
-    min_deposit = data['min_deposit']
-    status = check_user(user_id, password, min_deposit)
+    status = check_user(user_id, password)
     return jsonify({'status': status})
 
 @app.route('/check-balance', methods=['POST'])
@@ -56,6 +55,23 @@ def login_master():
     password = data['password']
     status = check_master(user_id, password)
     return jsonify({'status': status})
+
+@app.route('/get-balance', methods=['POST'])
+def get_balance():
+    data = request.json
+    user_id = data['user_id']
+    password = data['password']
+    
+    if not check_user(user_id, password):
+        return jsonify({'status': "Wrong Credentials"})
+
+    client = APIClient()
+    loginResponse = client.execute(loginCommand(userId=user_id, password=password))
+    data = client.commandExecute("getMarginLevel")['returnData']
+    client.disconnect()
+    
+    return jsonify({'balance': data['balance']})
+    
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
