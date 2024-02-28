@@ -284,7 +284,7 @@ def print_users_trades():
 
 def get_all_users():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE")
+        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE AND is_active = TRUE AND master_id_id IS NOT NULL")
         rows = cursor_user.fetchall()
         return rows        
 
@@ -521,8 +521,8 @@ def disconnect_masters(masters):
 def main():
     masters = load_masters()
     
-    drop_tables(['open_trades', 'past_trades'])
-    create_trade_tables()
+    # drop_tables(['open_trades', 'past_trades'])
+    # create_trade_tables()
     
     # drop_tables(['users'])
     # create_user_table()
