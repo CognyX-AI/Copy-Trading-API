@@ -159,7 +159,7 @@ def drop_tables(table_names):
         print("Error while connecting to PostgreSQL:", error)
 
 
-def insert_data_trades_table(trades_data, master_id):
+def insert_data_trades_table(trades_data, master_id, is_stock):
     inserted_rows_data = []
     removed_comments = []
 
@@ -189,7 +189,6 @@ def insert_data_trades_table(trades_data, master_id):
 
             row = cursor.fetchone()
             if row:
-                print(row)
                 inserted_rows_data.append(
                     {
                         'cmd': row[1],
@@ -201,32 +200,33 @@ def insert_data_trades_table(trades_data, master_id):
                         'close_time': row[7].strftime('%Y-%m-%d %H:%M:%S'),  # Corrected date format
                         'sl': row[8],
                         'tp': row[9],
-                        'master_id' : master_id
+                        'master_id' : master_id,
+                        'is_stock' : is_stock,
                     }
                 )
-                
+               
         cursor.execute("SELECT order_no FROM open_trades WHERE master_id = %s", (master_id,))
         all_order_numbers = [row[0] for row in cursor.fetchall()]
 
         # Find order numbers not in inserted_rows_data
         for order_no in all_order_numbers:
             if order_no not in [row['order'] for row in trades_data]:
-                removed_comments.append((order_no, master_id))
+                removed_comments.append((order_no, master_id, is_stock))
 
         if removed_comments:
             for comment in removed_comments:
-                cursor.execute("""
+                cursor.execute(f"""
                     INSERT INTO past_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp, master_id)
                     SELECT cmd, order_no, symbol, volume, open_price, open_time, now(), sl, tp, master_id
                     FROM open_trades
-                    WHERE order_no = %s AND master_id = %s
-                """, comment)
+                    WHERE order_no = {comment[0]} AND master_id = {comment[1]}
+                """)
 
             # Delete rows from open_trades where order_no is in removed_comments
-            cursor.execute("DELETE FROM open_trades WHERE (order_no, master_id) IN %s", (tuple(removed_comments),))
+            placeholders = ','.join(['%s'] * len(removed_comments))
+            cursor.execute("DELETE FROM open_trades WHERE (order_no, master_id) IN ({})".format(placeholders), [x[:2] for x in removed_comments])
 
         conn.commit()
-
     except Exception as error:
         print("Error while inserting or moving trades:", error)
 
@@ -319,9 +319,22 @@ def send_slack_message(e):
             print(f"Slack API error: {e.response['error']}")
 
 
-def make_trade(user_client, inserted_rows_data, userId, master_id):   
+def get_balance(user_client, master_id, masters):
+    user_balance = user_client.commandExecute("getMarginLevel")['returnData']['balance']
+    master_balance = masters[master_id][0].commandExecute("getMarginLevel")['returnData']['balance']
+    
+    return user_balance, master_balance
+
+def make_trade(user_client, inserted_rows_data, userId, master_id, masters):   
     try:
+        user_balance, master_balance = get_balance(user_client, master_id, masters)
+        
         for inserted_row_data in inserted_rows_data: 
+            if inserted_row_data['is_stock']:
+                V = user_balance / master_balance
+            else:
+                V = 1
+            
             if inserted_row_data['master_id'] == master_id:
                 args = {
                         "tradeTransInfo": {
@@ -333,7 +346,7 @@ def make_trade(user_client, inserted_rows_data, userId, master_id):
                             "tp": inserted_row_data['tp'],
                             "symbol": inserted_row_data['symbol'],
                             "type": 0,
-                            "volume": inserted_row_data['volume']
+                            "volume": inserted_row_data['volume'] * V
                         }
                 }
                 
@@ -381,7 +394,7 @@ def get_trades(client):
     return response
 
 
-def close_trade(user_client, removed_comments, userId, master_id):    
+def close_trade(user_client, removed_comments, userId):    
     try:
         for removed_comment in removed_comments:
             if removed_comment[1]:
@@ -441,7 +454,7 @@ def update_verification(xstation_id, verification_status):
         print("Error while updating verification status:", error)
 
 
-def user_trading(user, inserted_rows_data, removed_comments):
+def user_trading(user, inserted_rows_data, removed_comments, masters):
     user_client = None  # Initialize user_client outside the try block
     try:
         user_client = APIClient()
@@ -450,10 +463,10 @@ def user_trading(user, inserted_rows_data, removed_comments):
                   
         if loginResponse['status']:  
             if inserted_rows_data:
-                make_trade(user_client, inserted_rows_data, user[1], master_id)
+                make_trade(user_client, inserted_rows_data, user[1], master_id, masters)
             
             if removed_comments:
-                close_trade(user_client, removed_comments, user[1], master_id) 
+                close_trade(user_client, removed_comments, user[1]) 
         
         else:
             print("Failed: ", user[1])
@@ -536,7 +549,7 @@ def main():
                 
                 for key in master_keys:
                     trades_data = get_trades(masters[key][0])
-                    inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key)
+                    inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key, masters[key][1])
                     inserted_rows_data.extend(inserted_rows_data_tmp)
                     removed_comments.extend(removed_comments_tmp)
                 
@@ -550,7 +563,7 @@ def main():
                     if users:
                         with ThreadPoolExecutor(max_workers=len(users)) as executor:
                             for user in users:
-                                executor.submit(user_trading, user, inserted_rows_data, removed_comments)
+                                executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters)
                 
                 time.sleep(5)
         
