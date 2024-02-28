@@ -499,7 +499,7 @@ def load_masters():
             loginResponse = master_client.execute(loginCommand(userId=row[1], password=decrypt(row[2])))
             
             if loginResponse['status']:    
-                masters[row[0]] = master_client
+                masters[row[0]] = (master_client, row[7])
             else: 
                 update_master_verification(row[1])
                 
@@ -535,7 +535,7 @@ def main():
                 master_keys = list(masters.keys())
                 
                 for key in master_keys:
-                    trades_data = get_trades(masters[key])
+                    trades_data = get_trades(masters[key][0])
                     inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key)
                     inserted_rows_data.extend(inserted_rows_data_tmp)
                     removed_comments.extend(removed_comments_tmp)
