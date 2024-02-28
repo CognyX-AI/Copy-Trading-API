@@ -346,7 +346,7 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, masters):
                             "tp": inserted_row_data['tp'],
                             "symbol": inserted_row_data['symbol'],
                             "type": 0,
-                            "volume": inserted_row_data['volume'] * V
+                            "volume": round((inserted_row_data['volume'] * V), 2)
                         }
                 }
                 
@@ -533,7 +533,7 @@ def disconnect_masters(masters):
 
 def main():
     masters = load_masters()
-    
+
     # drop_tables(['open_trades', 'past_trades'])
     # create_trade_tables()
     
