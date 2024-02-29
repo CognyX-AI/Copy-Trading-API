@@ -96,6 +96,29 @@ def get_trade_history():
     
     return jsonify({'history': data})
 
+@app.route('/closed-trades', methods=['POST'])
+def get_closed_trades():
+    data = request.json
+    user_id = data['user_id']
+    password = data['password']
+    
+    if not check_user(user_id, password):
+        return jsonify({'status': "Wrong Credentials"})
+
+    client = APIClient()
+    loginResponse = client.execute(loginCommand(userId=user_id, password=password))
+    current_timestamp = int(time.time() * 1000)  # Current timestamp in milliseconds
+    args = {
+        "end": current_timestamp,
+        "start": 0
+    }
+
+    data = client.commandExecute("getTradesHistory", args)['returnData']
+    filtered_data = [trade for trade in data if trade.get('closed', False)]
+    client.disconnect()
+    
+    return jsonify({'history': data})
+
 @app.route('/open-trades', methods=['POST'])
 def get_open_trades():
     data = request.json
