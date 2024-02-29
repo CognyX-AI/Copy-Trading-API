@@ -107,7 +107,7 @@ def get_closed_trades():
 
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
-    current_timestamp = int(time.time() * 1000)  # Current timestamp in milliseconds
+    current_timestamp = int(time.time() * 1000)  #
     args = {
         "end": current_timestamp,
         "start": 0
@@ -161,6 +161,59 @@ def get_profit():
     client.disconnect()
     
     return jsonify({'profit': data['data']['profit']})
+
+@app.route('/close-trade', methods=['POST'])
+def close_trade():
+    data = request.json
+    user_id = data['user_id']
+    password = data['password']
+    order = data['order']
+
+    client = APIClient()
+    loginResponse = client.execute(loginCommand(userId=user_id, password=password))
+
+    args =  {
+        "openedOnly": True,
+    }
+        
+    trades = client.commandExecute("getTrades", args)['returnData']
+    main_trade = None
+
+    for trade in trades:
+        if trade['order'] == order:
+            main_trade = trade
+
+    if main_trade is None:
+        return jsonify({'message':"Trade could not be found."})
+
+    args = {
+        "tradeTransInfo": {
+            "type": 2,
+            "order": int(main_trade['order']),
+            "symbol": main_trade['symbol'],
+            "price": main_trade['close_price'],
+            "volume": float(main_trade['volume'])
+        }
+    }
+                    
+    data = client.commandExecute("tradeTransaction", args)['returnData']
+                    
+    time.sleep(1)
+                    
+    order_response = data['order']
+                    
+    args =  {
+        "order": order_response,
+    }
+            
+    response = client.commandExecute("tradeTransactionStatus", args)['returnData']
+    client.disconnect()       
+                    
+    if response["requestStatus"] in [0, 3]: 
+        return jsonify({'message':"Trade successfully closed."})
+    else:
+        return jsonify({'message':"Trade could not be closed."})
+    
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
