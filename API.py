@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from xAPIConnector import APIClient, loginCommand
+from xAPIConnector import APIClient, APIStreamClient, loginCommand
 import time
 
 app = Flask(__name__)
@@ -137,6 +137,30 @@ def get_open_trades():
     data = client.commandExecute("getTrades", args)['returnData']
     
     return jsonify({'open_trades': data})
+
+@app.route('/profit', methods=['POST'])
+def get_profit():
+    data = request.json
+    user_id = data['user_id']
+    password = data['password']
+    
+    if not check_user(user_id, password):
+        return jsonify({'status': "Wrong Credentials"})
+    
+    client = APIClient()
+    loginResponse = client.execute(loginCommand(userId=user_id, password=password))
+    ssid = loginResponse['streamSessionId']
+
+    data = {} 
+    def pr(msg, data_dict):
+        data_dict.update(msg)
+
+    sclient = APIStreamClient(ssId=ssid, profitFun=lambda msg: pr(msg, data))
+    sclient.subscribeProfits()
+    sclient.disconnect()
+    client.disconnect()
+    
+    return jsonify({'profit': data['data']['profit']})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
