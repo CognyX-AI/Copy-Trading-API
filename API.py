@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from xAPIConnector import APIClient, loginCommand
+import time
 
 app = Flask(__name__)
 
@@ -72,6 +73,47 @@ def get_balance():
     
     return jsonify({'balance': data['balance']})
     
+    
+@app.route('/trade-history', methods=['POST'])
+def get_trade_history():
+    data = request.json
+    user_id = data['user_id']
+    password = data['password']
+    
+    if not check_user(user_id, password):
+        return jsonify({'status': "Wrong Credentials"})
+
+    client = APIClient()
+    loginResponse = client.execute(loginCommand(userId=user_id, password=password))
+    current_timestamp = int(time.time() * 1000)  # Current timestamp in milliseconds
+    args = {
+        "end": current_timestamp,
+        "start": 0
+    }
+
+    data = client.commandExecute("getTradesHistory", args)['returnData']
+    client.disconnect()
+    
+    return jsonify({'history': data})
+
+@app.route('/open-trades', methods=['POST'])
+def get_open_trades():
+    data = request.json
+    user_id = data['user_id']
+    password = data['password']
+    
+    if not check_user(user_id, password):
+        return jsonify({'status': "Wrong Credentials"})
+
+    client = APIClient()
+    loginResponse = client.execute(loginCommand(userId=user_id, password=password))
+    args =  {
+		"openedOnly": True,
+	}
+    
+    data = client.commandExecute("getTrades", args)['returnData']
+    
+    return jsonify({'open_trades': data})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
