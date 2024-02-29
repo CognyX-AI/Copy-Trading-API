@@ -136,7 +136,7 @@ def get_open_trades():
     
     data = client.commandExecute("getTrades", args)['returnData']
     
-    return jsonify({'open_trades': data})
+    return jsonify({'closed_trades': data})
 
 @app.route('/profit', methods=['POST'])
 def get_profit():
