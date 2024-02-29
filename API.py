@@ -117,7 +117,7 @@ def get_closed_trades():
     filtered_data = [trade for trade in data if trade.get('closed', False)]
     client.disconnect()
     
-    return jsonify({'history': data})
+    return jsonify({'closed_trades': data})
 
 @app.route('/open-trades', methods=['POST'])
 def get_open_trades():
@@ -136,7 +136,7 @@ def get_open_trades():
     
     data = client.commandExecute("getTrades", args)['returnData']
     
-    return jsonify({'closed_trades': data})
+    return jsonify({'open_trades': data})
 
 @app.route('/profit', methods=['POST'])
 def get_profit():
