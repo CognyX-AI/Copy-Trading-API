@@ -11,6 +11,7 @@ from Crypto.Util.Padding import pad, unpad
 import base64
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+import pandas as pd
 
 
 load_dotenv()
@@ -62,7 +63,8 @@ def create_trade_tables():
             open_time TIMESTAMP,
             close_time TIMESTAMP,
             sl FLOAT,
-            tp FLOAT
+            tp FLOAT,
+            master_id VARCHAR(50)
         )
         '''
         cursor.execute(create_table_query)    
@@ -78,7 +80,8 @@ def create_trade_tables():
             open_time TIMESTAMP,
             close_time TIMESTAMP,
             sl FLOAT,
-            tp FLOAT
+            tp FLOAT,
+            master_id VARCHAR(50)
         )
         '''
         cursor.execute(create_table_query)    
@@ -95,11 +98,10 @@ def create_user_table():
     try:
         # Create table if not exists
         create_table_query = '''
-        CREATE TABLE IF NOT EXISTS users_credentials_xstation (
+        CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
             xstation_id INTEGER UNIQUE,
-            password VARCHAR(255),
-            user_id_id INTEGER
+            password VARCHAR(255)
         )
         '''
         cursor.execute(create_table_query)    
@@ -157,7 +159,7 @@ def drop_tables(table_names):
         print("Error while connecting to PostgreSQL:", error)
 
 
-def insert_data_trades_table(trades_data):
+def insert_data_trades_table(trades_data, master_id, is_stock):
     inserted_rows_data = []
     removed_comments = []
 
@@ -167,8 +169,8 @@ def insert_data_trades_table(trades_data):
                 trade['close_time'] = 4102444800000
 
             cursor.execute("""
-                INSERT INTO open_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO open_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp, master_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (order_no) DO NOTHING
                 RETURNING *
                 """, (
@@ -180,7 +182,8 @@ def insert_data_trades_table(trades_data):
                     datetime.fromtimestamp(trade.get('open_time', 0) / 1000),
                     datetime.fromtimestamp(trade.get('close_time', 4102444800000) / 1000),
                     trade.get('sl', 0.0),
-                    trade.get('tp', 0.0)
+                    trade.get('tp', 0.0),
+                    master_id
                 )
             )
 
@@ -197,33 +200,33 @@ def insert_data_trades_table(trades_data):
                         'close_time': row[7].strftime('%Y-%m-%d %H:%M:%S'),  # Corrected date format
                         'sl': row[8],
                         'tp': row[9],
+                        'master_id' : master_id,
+                        'is_stock' : is_stock,
                     }
                 )
-
-        # Fetch all order numbers from open_trades
-        cursor.execute("SELECT order_no FROM open_trades")
+               
+        cursor.execute("SELECT order_no FROM open_trades WHERE master_id = %s", (master_id,))
         all_order_numbers = [row[0] for row in cursor.fetchall()]
 
         # Find order numbers not in inserted_rows_data
         for order_no in all_order_numbers:
             if order_no not in [row['order'] for row in trades_data]:
-                removed_comments.append(order_no)
+                removed_comments.append((order_no, master_id, is_stock))
 
         if removed_comments:
             for comment in removed_comments:
                 cursor.execute("""
-                    INSERT INTO past_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp)
-                    SELECT cmd, order_no, symbol, volume, open_price, open_time, now(), sl, tp
+                    INSERT INTO past_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp, master_id)
+                    SELECT cmd, order_no, symbol, volume, open_price, open_time, now(), sl, tp, master_id
                     FROM open_trades
-                    WHERE order_no = %s
-                """, (comment,))
+                    WHERE order_no = %s AND master_id = %s
+                """, (comment[0], comment[1]))
 
             # Delete rows from open_trades where order_no is in removed_comments
-            cursor.execute("DELETE FROM open_trades WHERE order_no IN %s", (tuple(removed_comments),))
-
+            placeholders = ','.join(['%s'] * len(removed_comments))
+            cursor.execute("DELETE FROM open_trades WHERE (order_no, master_id) IN ({})".format(placeholders), [x[:2] for x in removed_comments])
 
         conn.commit()
-
     except Exception as error:
         print("Error while inserting or moving trades:", error)
 
@@ -281,12 +284,22 @@ def print_users_trades():
 
 def get_all_users():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE")
+        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE AND is_active = TRUE AND master_id_id IS NOT NULL")
         rows = cursor_user.fetchall()
         return rows        
 
     except (Exception, psycopg2.Error) as error:
         print("Error while fetching data from users_credentials_xstation table:", error)
+
+
+def get_all_users_test():
+    try:
+        cursor.execute("SELECT * FROM users")
+        rows = cursor.fetchall()
+        return rows        
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while fetching data from users table:", error)
 
 
 def send_slack_message(e):
@@ -306,34 +319,53 @@ def send_slack_message(e):
             print(f"Slack API error: {e.response['error']}")
 
 
-def make_trade(user_client, inserted_rows_data):   
+def get_balance(user_client, master_id, masters):
+    user_balance = user_client.commandExecute("getMarginLevel")['returnData']['balance']
+    master_balance = masters[master_id][0].commandExecute("getMarginLevel")['returnData']['balance']
+    
+    return user_balance, master_balance
+
+def make_trade(user_client, inserted_rows_data, userId, master_id, masters):   
     try:
+        user_balance, master_balance = get_balance(user_client, master_id, masters)
+        
         for inserted_row_data in inserted_rows_data: 
-            args = {
-                    "tradeTransInfo": {
-                        "cmd": inserted_row_data['cmd'],
-                        "comment": str(inserted_row_data['order']),
-                        "expiration": 0,
-                        "price": inserted_row_data['open_price'],
-                        "sl": inserted_row_data['sl'],
-                        "tp": inserted_row_data['tp'],
-                        "symbol": inserted_row_data['symbol'],
-                        "type": 0,
-                        "volume": inserted_row_data['volume']
-                    }
-            }
-            
-            response = user_client.commandExecute("tradeTransaction", args)
-            if response['status']:
-                print("Trade successfully executed.")
+            if inserted_row_data['is_stock']:
+                V = user_balance / master_balance
             else:
-                print("Trade execution failed. Error code:", response['errorCode'])
+                V = 1
             
-            time.sleep(1)
+            if round((inserted_row_data['volume'] * V), 2) <= 0:
+                return
+            
+            if inserted_row_data['master_id'] == master_id:
+                args = {
+                        "tradeTransInfo": {
+                            "cmd": inserted_row_data['cmd'],
+                            "comment": str(inserted_row_data['order']),
+                            "expiration": 0,
+                            "price": inserted_row_data['open_price'],
+                            "sl": inserted_row_data['sl'],
+                            "tp": inserted_row_data['tp'],
+                            "symbol": inserted_row_data['symbol'],
+                            "type": 0,
+                            "volume": round((inserted_row_data['volume'] * V), 2)
+                        }
+                }
+                
+                response = user_client.commandExecute("tradeTransaction", args)
+                
+                if response['status'] == True:
+                    print("Trade successfully executed.")
+                else:
+                    print("Trade execution failed. Error code:", response['errorCode'])
+                    send_slack_message(f"Trade failed for userId: {userId}")
+                
+                time.sleep(2)
     
     except Exception as e:
-        script_logger.error("Error: ", e)
-        send_slack_message(e)
+        script_logger.error(f"Error: {e} for userId: {userId}")
+        send_slack_message(f"Error: {e} for userId: {userId}")
 
 
 def get_client(userId, password):    
@@ -365,36 +397,15 @@ def get_trades(client):
     return response
 
 
-def close_trade(user_client, removed_comments):    
+def close_trade(user_client, removed_comments, userId):    
     try:
         for removed_comment in removed_comments:
-            trade_by_comment = get_order_by_comment(user_client, str(removed_comment))
+            if removed_comment[1]:
+                trade_by_comment = get_order_by_comment(user_client, str(removed_comment[0]))
 
-            if not trade_by_comment:
-                continue
-            
-            args = {
-                "tradeTransInfo": {
-                    "type": 2,
-                    "order": int(trade_by_comment['order']),
-                    "symbol": trade_by_comment['symbol'],
-                    "price": trade_by_comment['close_price'],
-                    "volume": float(trade_by_comment['volume'])
-                }
-            }
-            
-            order_response = user_client.commandExecute("tradeTransaction", args)['returnData']['order']
-            time.sleep(2)
-            
-            args =  {
-		        "order": order_response,
-	        }
-    
-            response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
-            
-            if response["requestStatus"] in [0, 3]: 
-                print("Trade successfully closed.")
-            else:
+                if trade_by_comment is None:
+                    continue
+                
                 args = {
                     "tradeTransInfo": {
                         "type": 2,
@@ -405,11 +416,36 @@ def close_trade(user_client, removed_comments):
                     }
                 }
                 
-                response = user_client.commandExecute("tradeTransaction", args)
+                data = user_client.commandExecute("tradeTransaction", args)['returnData']
+                
+                time.sleep(2)
+                
+                order_response = data['order']
+                
+                args =  {
+                    "order": order_response,
+                }
+        
+                response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
+                
+                if response["requestStatus"] in [0, 3]: 
+                    print("Trade successfully closed.")
+                else:
+                    args = {
+                        "tradeTransInfo": {
+                            "type": 2,
+                            "order": int(trade_by_comment['order']),
+                            "symbol": trade_by_comment['symbol'],
+                            "price": trade_by_comment['close_price'],
+                            "volume": float(trade_by_comment['volume'])
+                        }
+                    }
+                    
+                    response = user_client.commandExecute("tradeTransaction", args)
     
     except Exception as e:
-        script_logger.error("Error: ", e)
-        send_slack_message(e)
+        script_logger.error(f"Error: {e} for userId: {userId}")
+        send_slack_message(f"Error: {e} for userId: {userId}")
 
 
 def update_verification(xstation_id, verification_status):
@@ -421,60 +457,123 @@ def update_verification(xstation_id, verification_status):
         print("Error while updating verification status:", error)
 
 
-def user_trading(user, inserted_rows_data, removed_comments):
+def user_trading(user, inserted_rows_data, removed_comments, masters):
+    user_client = None  # Initialize user_client outside the try block
     try:
         user_client = APIClient()
         loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
+        master_id = user[5]         
                   
         if loginResponse['status']:  
             if inserted_rows_data:
-                make_trade(user_client, inserted_rows_data)
+                make_trade(user_client, inserted_rows_data, user[1], master_id, masters)
             
             if removed_comments:
-                close_trade(user_client, removed_comments) 
+                close_trade(user_client, removed_comments, user[1]) 
         
         else:
+            print("Failed: ", user[1])
             update_verification(user[1], False)    
                     
-        user_client.disconnect()
-                
     except Exception as e:
         script_logger.error("Error: ", e)
         send_slack_message(e)
+    finally:
+        if user_client:
+            user_client.disconnect()
+
+def load_demo_users(file):
+    df = pd.read_csv(file)
+    for _, row in df.iterrows():
+        user_id = row['User ID']
+        password = row['Password']
+        add_users(user_id, password)
     
+
+def update_master_verification(xstation_id, verification_status):
+    try:
+        print("xstation_id: ", xstation_id)
+        cursor_user.execute(f"UPDATE users_credentials_master_xstation SET verification = {verification_status} WHERE xstation_id = {xstation_id}")
+        conn_user.commit()
+    except (Exception, psycopg2.Error) as error:
+        print("Error while updating verification status:", error)
+
+
+def load_masters():
+    try:
+        cursor_user.execute("SELECT * FROM users_credentials_master_xstation WHERE verification = TRUE")
+        rows = cursor_user.fetchall()
+        
+    except (Exception, psycopg2.Error) as error:
+        print("Error while fetching data from users_credentials_master_xstation table:", error)
+        return []
+    
+    masters = {}
+    for row in rows:
+        if row[3]:
+            master_client = APIClient()
+            loginResponse = master_client.execute(loginCommand(userId=row[1], password=decrypt(row[2])))
+            
+            if loginResponse['status']:    
+                masters[row[0]] = (master_client, row[7])
+            else: 
+                update_master_verification(row[1])
+                
+                if row[0] in masters.keys():
+                    masters.pop(row[0])
+                    
+                master_client.disconnect() 
+
+    return masters
+
+def disconnect_masters(masters):
+    keys = list(masters.keys())
+    for master in keys:
+        masters[master][0].disconnect()
+        masters.pop(master)
+        
+    return masters
 
 def main():
-    master_userId = os.environ.get("MASTER_ID")
-    master_password = os.environ.get("MASTER_PASSWORD")
-    master_client = APIClient()
-    loginResponse = master_client.execute(loginCommand(userId=master_userId, password=master_password))
     
-    # drop_tables(['open_trades', 'past_trades', 'users_credentials_xstation'])
+    # Reset trades table
+    # drop_tables(['open_trades', 'past_trades'])
     # create_trade_tables()
-    # create_user_table()
-    # add_users(15770950, 'Abcd@1234')
-    # add_users(15780436, 'Check@123')
-    # add_users(15780442, 'Bhim@123')
-    # add_users(15780445, 'Password@123')
-    # add_users(15780439, 'Prince@123')
     
+    counter = 0
+    masters = load_masters()
+
     while True:
         try:
-            trades_data = get_trades(master_client)
-            inserted_rows_data, removed_comments = insert_data_trades_table(trades_data)
-
-            users = get_all_users()
-            
-            if users and (inserted_rows_data or removed_comments):
-                with ThreadPoolExecutor(max_workers=len(users)) as executor:
-                    for user in users:
-                        executor.submit(user_trading, user, inserted_rows_data, removed_comments)
-            
-            time.sleep(5)
+            if masters:
+                inserted_rows_data, removed_comments = [], []
+                master_keys = list(masters.keys())
+                
+                for key in master_keys:
+                    trades_data = get_trades(masters[key][0])
+                    inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key, masters[key][1])
+                    inserted_rows_data.extend(inserted_rows_data_tmp)
+                    removed_comments.extend(removed_comments_tmp)
+                
+                if inserted_rows_data or removed_comments:
+                    users = get_all_users()
+                    
+                    if users:
+                        with ThreadPoolExecutor(max_workers=len(users)) as executor:
+                            for user in users:
+                                executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters)
+                
+                time.sleep(5)
         
         except Exception as e:
             script_logger.error("Error: ", e)
             send_slack_message(e)
+        
+        counter += 1    
+        if counter % 6:
+            masters = disconnect_masters(masters)
+            masters = load_masters() 
+    
     
 if __name__ == '__main__':
     main()
