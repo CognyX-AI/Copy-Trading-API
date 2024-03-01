@@ -64,7 +64,7 @@ def create_trade_tables():
             close_time TIMESTAMP,
             sl FLOAT,
             tp FLOAT,
-            master_id INTEGER
+            master_id VARCHAR(50)
         )
         '''
         cursor.execute(create_table_query)    
@@ -81,7 +81,7 @@ def create_trade_tables():
             close_time TIMESTAMP,
             sl FLOAT,
             tp FLOAT,
-            master_id INTEGER
+            master_id VARCHAR(50)
         )
         '''
         cursor.execute(create_table_query)    
@@ -215,12 +215,12 @@ def insert_data_trades_table(trades_data, master_id, is_stock):
 
         if removed_comments:
             for comment in removed_comments:
-                cursor.execute(f"""
+                cursor.execute("""
                     INSERT INTO past_trades (cmd, order_no, symbol, volume, open_price, open_time, close_time, sl, tp, master_id)
                     SELECT cmd, order_no, symbol, volume, open_price, open_time, now(), sl, tp, master_id
                     FROM open_trades
-                    WHERE order_no = {comment[0]} AND master_id = {comment[1]}
-                """)
+                    WHERE order_no = %s AND master_id = %s
+                """, (comment[0], comment[1]))
 
             # Delete rows from open_trades where order_no is in removed_comments
             placeholders = ','.join(['%s'] * len(removed_comments))
@@ -334,6 +334,9 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, masters):
                 V = user_balance / master_balance
             else:
                 V = 1
+            
+            if round((inserted_row_data['volume'] * V), 2) <= 0:
+                return
             
             if inserted_row_data['master_id'] == master_id:
                 args = {
@@ -526,21 +529,20 @@ def load_masters():
 def disconnect_masters(masters):
     keys = list(masters.keys())
     for master in keys:
-        masters[master].disconnect()
+        masters[master][0].disconnect()
         masters.pop(master)
         
     return masters
 
 def main():
-    masters = load_masters()
-
+    
+    # Reset trades table
     # drop_tables(['open_trades', 'past_trades'])
     # create_trade_tables()
     
-    # drop_tables(['users'])
-    # create_user_table()
-    # load_demo_users("xStation_Credentials_trunc.csv")
-    
+    counter = 0
+    masters = load_masters()
+
     while True:
         try:
             if masters:
@@ -553,12 +555,8 @@ def main():
                     inserted_rows_data.extend(inserted_rows_data_tmp)
                     removed_comments.extend(removed_comments_tmp)
                 
-                # print("inserted: ", inserted_rows_data)
-                # print("removed: ", removed_comments)
                 if inserted_rows_data or removed_comments:
-                    
                     users = get_all_users()
-                    # users = get_all_users_test()
                     
                     if users:
                         with ThreadPoolExecutor(max_workers=len(users)) as executor:
@@ -570,6 +568,11 @@ def main():
         except Exception as e:
             script_logger.error("Error: ", e)
             send_slack_message(e)
+        
+        counter += 1    
+        if counter % 6:
+            masters = disconnect_masters(masters)
+            masters = load_masters() 
     
     
 if __name__ == '__main__':
