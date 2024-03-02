@@ -515,7 +515,7 @@ def load_masters():
             loginResponse = master_client.execute(loginCommand(userId=row[1], password=decrypt(row[2])))
             
             if loginResponse['status']:    
-                masters[row[0]] = (master_client, row[7])
+                masters[row[0]] = (master_client, row[5])
             else: 
                 update_master_verification(row[1])
                 
@@ -565,15 +565,17 @@ def main():
                 
                 time.sleep(5)
         
-        except Exception as e:
-            script_logger.error("Error: ", e)
-            send_slack_message(e)
-        
-        counter += 1    
-        if counter % 6:
-            masters = disconnect_masters(masters)
-            masters = load_masters() 
+            counter += 1  
+            print("counter: ", counter)  
+            if counter % 10 == 0:
+                print('dc')
+                masters = disconnect_masters(masters)
+                masters = load_masters() 
     
+        except Exception as e:
+            script_logger.error("Error: ", str(e))
+            send_slack_message(str(e))
+            
     
 if __name__ == '__main__':
     main()
