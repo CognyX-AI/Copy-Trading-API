@@ -319,15 +319,20 @@ def send_slack_message(e):
             print(f"Slack API error: {e.response['error']}")
 
 
-def get_balance(user_client, master_id, masters):
+def get_balance_user(user_client):
     user_balance = user_client.commandExecute("getMarginLevel")['returnData']['balance']
+    
+    return user_balance
+
+def get_balance_master(master_id, masters):
     master_balance = masters[master_id][0].commandExecute("getMarginLevel")['returnData']['balance']
     
-    return user_balance, master_balance
+    return master_balance
 
-def make_trade(user_client, inserted_rows_data, userId, master_id, masters):   
+def make_trade(user_client, inserted_rows_data, userId, master_id, masters, master_balances):   
     try:
-        user_balance, master_balance = get_balance(user_client, master_id, masters)
+        user_balance = get_balance_user(user_client) 
+        master_balance = master_balances[master_id]
         
         for inserted_row_data in inserted_rows_data: 
             if inserted_row_data['is_stock']:
@@ -457,16 +462,16 @@ def update_verification(xstation_id, verification_status):
         print("Error while updating verification status:", error)
 
 
-def user_trading(user, inserted_rows_data, removed_comments, masters):
+def user_trading(user, inserted_rows_data, removed_comments, masters, master_balances):
     user_client = None  # Initialize user_client outside the try block
     try:
         user_client = APIClient()
         loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
-        master_id = user[5]         
+        master_id = user[5]                 
                   
         if loginResponse['status']:  
             if inserted_rows_data:
-                make_trade(user_client, inserted_rows_data, user[1], master_id, masters)
+                make_trade(user_client, inserted_rows_data, user[1], master_id, masters, master_balances)
             
             if removed_comments:
                 close_trade(user_client, removed_comments, user[1]) 
@@ -558,23 +563,25 @@ def main():
                 if inserted_rows_data or removed_comments:
                     users = get_all_users()
                     
+                    master_balances = {}
+                    for master_key in master_keys:
+                        master_balances[master_key] = get_balance_user(masters[master_key][0])
+                    
                     if users:
                         with ThreadPoolExecutor(max_workers=len(users)) as executor:
                             for user in users:
-                                executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters)
+                                executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances)
                 
                 time.sleep(5)
         
             counter += 1  
-            print("counter: ", counter)  
-            if counter % 10 == 0:
-                print('dc')
+            if counter % 60 == 0:
                 masters = disconnect_masters(masters)
                 masters = load_masters() 
     
         except Exception as e:
-            script_logger.error("Error: ", str(e))
-            send_slack_message(str(e))
+            script_logger.error("Error: ", e)
+            send_slack_message(e)
             
     
 if __name__ == '__main__':
