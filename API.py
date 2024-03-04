@@ -144,19 +144,26 @@ def get_profit():
     user_id = data['user_id']
     password = data['password']
     
-    if not check_user(user_id, password):
-        return jsonify({'status': "Wrong Credentials"}), 401
+    # if not check_user(user_id, password):
+    #     return jsonify({'status': "Wrong Credentials"}), 401
     
     client = APIClient()
-    loginResponse = client.execute(loginCommand(userId=user_id, password=password))
-    ssid = loginResponse['streamSessionId']
+    try:
+        loginResponse = client.execute(loginCommand(userId=user_id, password=password))
+        ssid = loginResponse['streamSessionId']
 
-    data = {} 
-    def pr(msg, data_dict):
-        data_dict.update(msg)
+        data = {} 
+        def pr(msg, data_dict):
+            data_dict.update(msg)
 
-    sclient = APIStreamClient(ssId=ssid, profitFun=lambda msg: pr(msg, data))
-    sclient.subscribeProfits()
+        sclient = APIStreamClient(ssId=ssid, profitFun=lambda msg: pr(msg, data))
+        try:
+            sclient.subscribeProfits()
+        except:
+            pass
+    except:
+        pass
+    
     sclient.disconnect()
     client.disconnect()
     
