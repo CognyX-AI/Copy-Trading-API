@@ -38,7 +38,7 @@ def login_user():
     user_id = data['user_id']
     password = data['password']
     status = check_user(user_id, password)
-    return jsonify({'status': status})
+    return jsonify({'status': status}), 200
 
 @app.route('/check-balance', methods=['POST'])
 def balance():
@@ -47,7 +47,7 @@ def balance():
     password = data['password']
     min_deposit = data['min_deposit']
     status = check_balance(user_id, password, min_deposit)
-    return jsonify({'status': status})
+    return jsonify({'status': status}), 200
 
 @app.route('/login-master', methods=['POST'])
 def login_master():
@@ -55,7 +55,7 @@ def login_master():
     user_id = data['user_id']
     password = data['password']
     status = check_master(user_id, password)
-    return jsonify({'status': status})
+    return jsonify({'status': status}), 200
 
 @app.route('/get-balance', methods=['POST'])
 def get_balance():
@@ -64,14 +64,14 @@ def get_balance():
     password = data['password']
     
     if not check_user(user_id, password):
-        return jsonify({'status': "Wrong Credentials"})
+        return jsonify({'status': "Wrong Credentials"}), 401
 
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
     data = client.commandExecute("getMarginLevel")['returnData']
     client.disconnect()
     
-    return jsonify({'balance': data['balance']})
+    return jsonify({'balance': data['balance']}), 200
     
     
 @app.route('/trade-history', methods=['POST'])
@@ -81,7 +81,7 @@ def get_trade_history():
     password = data['password']
     
     if not check_user(user_id, password):
-        return jsonify({'status': "Wrong Credentials"})
+        return jsonify({'status': "Wrong Credentials"}), 401
 
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
@@ -94,7 +94,7 @@ def get_trade_history():
     data = client.commandExecute("getTradesHistory", args)['returnData']
     client.disconnect()
     
-    return jsonify({'history': data})
+    return jsonify({'history': data}), 200
 
 @app.route('/closed-trades', methods=['POST'])
 def get_closed_trades():
@@ -103,7 +103,7 @@ def get_closed_trades():
     password = data['password']
     
     if not check_user(user_id, password):
-        return jsonify({'status': "Wrong Credentials"})
+        return jsonify({'status': "Wrong Credentials"}), 401
 
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
@@ -117,7 +117,7 @@ def get_closed_trades():
     filtered_data = [trade for trade in data if trade.get('closed', False)]
     client.disconnect()
     
-    return jsonify({'closed_trades': data})
+    return jsonify({'closed_trades': data}), 200
 
 @app.route('/open-trades', methods=['POST'])
 def get_open_trades():
@@ -126,7 +126,7 @@ def get_open_trades():
     password = data['password']
     
     if not check_user(user_id, password):
-        return jsonify({'status': "Wrong Credentials"})
+        return jsonify({'status': "Wrong Credentials"}), 401
 
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
@@ -136,7 +136,7 @@ def get_open_trades():
     
     data = client.commandExecute("getTrades", args)['returnData']
     
-    return jsonify({'open_trades': data})
+    return jsonify({'open_trades': data}), 200
 
 @app.route('/profit', methods=['POST'])
 def get_profit():
@@ -145,7 +145,7 @@ def get_profit():
     password = data['password']
     
     if not check_user(user_id, password):
-        return jsonify({'status': "Wrong Credentials"})
+        return jsonify({'status': "Wrong Credentials"}), 401
     
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
@@ -160,7 +160,7 @@ def get_profit():
     sclient.disconnect()
     client.disconnect()
     
-    return jsonify({'profit': data['data']['profit']})
+    return jsonify({'profit': data['data']['profit']}), 200
 
 @app.route('/close-trade', methods=['POST'])
 def close_trade():
@@ -184,7 +184,7 @@ def close_trade():
             main_trade = trade
 
     if main_trade is None:
-        return jsonify({'message':"Trade could not be found."})
+        return jsonify({'message':"Trade could not be found."}), 400
 
     args = {
         "tradeTransInfo": {
@@ -210,9 +210,9 @@ def close_trade():
     client.disconnect()       
                     
     if response["requestStatus"] in [0, 3]: 
-        return jsonify({'message':"Trade successfully closed."})
+        return jsonify({'message':"Trade successfully closed."}), 200
     else:
-        return jsonify({'message':"Trade could not be closed."})
+        return jsonify({'message':"Trade could not be closed."}), 500
     
 
 if __name__ == '__main__':
