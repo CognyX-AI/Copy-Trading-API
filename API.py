@@ -91,7 +91,13 @@ def get_trade_history():
         "start": 0
     }
 
-    data = client.commandExecute("getTradesHistory", args)['returnData']
+    data_history = client.commandExecute("getTradesHistory", args)['returnData']
+    args =  {
+		"openedOnly": True,
+	}
+    
+    data_open = client.commandExecute("getTrades", args)['returnData']
+    data = data_history + data_open
     client.disconnect()
     
     return jsonify({'history': data}), 200

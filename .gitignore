@@ -2,3 +2,5 @@
 __pycache__
 exp.py
 Logfile.log
+servers
+om-key.pem
