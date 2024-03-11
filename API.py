@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+import subprocess
 
 app = Flask(__name__)
 last_api_call_time = time.time()
@@ -31,6 +32,11 @@ def check_api_call_time():
     if current_time - last_api_call_time > 600:
         send_slack_message("No API call made in the last 10 minutes.")
         last_api_call_time = current_time
+        try:
+            subprocess.run(["./restart_script.sh"])
+            send_slack_message("Trading server restarted.")
+        except Exception as e:
+            send_slack_message(f"Server could not be restarted: {e}") 
 
 
 def check_master(user_id, password):

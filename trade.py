@@ -555,7 +555,7 @@ def main():
 
     while True:
         try:
-            # send_check()
+            send_check()
             
             if masters:
                 inserted_rows_data, removed_comments = [], []
