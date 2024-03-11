@@ -26,7 +26,9 @@ API_MAX_CONN_TRIES = 3
 # logger properties
 logger = logging.getLogger("jsonSocket")
 FORMAT = '[%(asctime)-15s][%(funcName)s:%(lineno)d] %(message)s'
-logging.basicConfig(format=FORMAT)
+
+# Configure logging to file
+logging.basicConfig(filename='wrapper.log', format=FORMAT, level=logging.DEBUG if DEBUG else logging.CRITICAL)
 
 if DEBUG:
     logger.setLevel(logging.DEBUG)
