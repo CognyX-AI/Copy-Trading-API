@@ -332,14 +332,14 @@ def get_balance_master(master_id, masters):
 
 def make_trade(user_client, inserted_rows_data, userId, master_id, master_balances, allocated_amount, forex_multiplier):   
     try:
-        user_balance = allocated_amount
+        user_balance = allocated_amount if allocated_amount else get_balance_user(user_client)
         master_balance = master_balances[master_id]
         
         for inserted_row_data in inserted_rows_data: 
             if inserted_row_data['is_stock']:
                 V = user_balance / master_balance
             else:
-                V = forex_multiplier
+                V = forex_multiplier if forex_multiplier else 1
             
             if round((inserted_row_data['volume'] * V), 2) <= 0:
                 return
