@@ -1,10 +1,40 @@
 from flask import Flask, request, jsonify
 from xAPIConnector import APIClient, APIStreamClient, loginCommand
 import time
+import os
+from dotenv import load_dotenv
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 app = Flask(__name__)
+last_api_call_time = time.time()
+load_dotenv()
+
+def send_slack_message(message):
+    slack_token = os.environ.get("SLACK_API_TOKEN")
+    channel_id = os.environ.get("CHANNEL_ID")
+        
+    try:
+        client = WebClient(token=slack_token)
+        
+        response = client.chat_postMessage(
+            channel=channel_id,
+            text=message
+        )
+    
+    except SlackApiError as e:
+        print(f"Slack API error: {e.response['error']}")
+
+def check_api_call_time():
+    global last_api_call_time
+    current_time = time.time()
+    if current_time - last_api_call_time > 600:
+        send_slack_message("No API call made in the last 10 minutes.")
+        last_api_call_time = current_time
+
 
 def check_master(user_id, password):
+    check_api_call_time()
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
     client.disconnect()
@@ -12,6 +42,7 @@ def check_master(user_id, password):
     return loginResponse['status']
 
 def check_user(user_id, password):
+    check_api_call_time()
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
     client.disconnect()
@@ -19,6 +50,7 @@ def check_user(user_id, password):
     return loginResponse['status']
 
 def check_balance(user_id, password, min_deposit):
+    check_api_call_time()
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
     
@@ -150,8 +182,8 @@ def get_profit():
     user_id = data['user_id']
     password = data['password']
     
-    # if not check_user(user_id, password):
-    #     return jsonify({'status': "Wrong Credentials"}), 401
+    if not check_user(user_id, password):
+        return jsonify({'status': "Wrong Credentials"}), 401
     
     client = APIClient()
     try:
@@ -227,6 +259,13 @@ def close_trade():
     else:
         return jsonify({'message':"Trade could not be closed."}), 500
     
+
+@app.route('/check-api-call', methods=['GET'])
+def check_api_call_route():
+    check_api_call_time()
+    global last_api_call_time
+    last_api_call_time = time.time()
+    return jsonify({'message': 'Check completed'}), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)

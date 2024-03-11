@@ -541,8 +541,8 @@ def disconnect_masters(masters):
     return masters
 
 def send_check():
-    url = os.environ.get('API_URL') + 'check'
-    response = requests.post(url, data={"message" : "work"})
+    url = os.environ.get('API_URL') + 'check-api-call'
+    response = requests.get(url)
 
 def main():
     
