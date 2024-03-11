@@ -12,6 +12,7 @@ import base64
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import pandas as pd
+import requests
 
 
 load_dotenv()
@@ -329,16 +330,16 @@ def get_balance_master(master_id, masters):
     
     return master_balance
 
-def make_trade(user_client, inserted_rows_data, userId, master_id, masters, master_balances):   
+def make_trade(user_client, inserted_rows_data, userId, master_id, master_balances, allocated_amount, forex_multiplier):   
     try:
-        user_balance = get_balance_user(user_client) 
+        user_balance = allocated_amount
         master_balance = master_balances[master_id]
         
         for inserted_row_data in inserted_rows_data: 
             if inserted_row_data['is_stock']:
                 V = user_balance / master_balance
             else:
-                V = 1
+                V = forex_multiplier
             
             if round((inserted_row_data['volume'] * V), 2) <= 0:
                 return
@@ -463,7 +464,7 @@ def update_verification(xstation_id, verification_status):
 
 
 def user_trading(user, inserted_rows_data, removed_comments, masters, master_balances):
-    user_client = None  # Initialize user_client outside the try block
+    user_client = None
     try:
         user_client = APIClient()
         loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
@@ -471,7 +472,7 @@ def user_trading(user, inserted_rows_data, removed_comments, masters, master_bal
                   
         if loginResponse['status']:  
             if inserted_rows_data:
-                make_trade(user_client, inserted_rows_data, user[1], master_id, masters, master_balances)
+                make_trade(user_client, inserted_rows_data, user[1], master_id, master_balances, user[7], user[8])
             
             if removed_comments:
                 close_trade(user_client, removed_comments, user[1]) 
@@ -481,7 +482,7 @@ def user_trading(user, inserted_rows_data, removed_comments, masters, master_bal
             update_verification(user[1], False)    
                     
     except Exception as e:
-        script_logger.error("Error: ", e)
+        script_logger.error(f"Error: {e} for user {user[1]}, password {user[2]}, decrypted {decrypt(user[2])}")
         send_slack_message(e)
     finally:
         if user_client:
@@ -539,6 +540,10 @@ def disconnect_masters(masters):
         
     return masters
 
+def send_check():
+    url = os.environ.get('API_URL') + 'check'
+    response = requests.post(url, data={"message" : "work"})
+
 def main():
     
     # Reset trades table
@@ -550,6 +555,8 @@ def main():
 
     while True:
         try:
+            # send_check()
+            
             if masters:
                 inserted_rows_data, removed_comments = [], []
                 master_keys = list(masters.keys())
