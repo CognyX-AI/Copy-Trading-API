@@ -365,7 +365,7 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                     print("Trade successfully executed.")
                 else:
                     print("Trade execution failed. Error code:", response['errorCode'])
-                    send_slack_message(f"Trade failed for userId: {userId}")
+                    send_slack_message(f"Trade failed for userId: {userId}, Error code: {response['errorCode']}, data : {inserted_rows_data}")
                 
                 time.sleep(2)
     
