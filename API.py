@@ -135,7 +135,7 @@ def get_trade_history():
 	}
     
     data_open = client.commandExecute("getTrades", args)['returnData']
-    data = data_history + data_open
+    data = data_open + data_history
     client.disconnect()
     
     return jsonify({'history': data}), 200
