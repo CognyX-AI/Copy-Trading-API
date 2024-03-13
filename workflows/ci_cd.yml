@@ -1,0 +1,35 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - dev-api
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.x
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Store variables
+      env:
+        PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+        SERVER : ${{ secrets.SERVER_API }}
+      run: |
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+
+    - name: Deploy to production
+      if: success()
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_API 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'
