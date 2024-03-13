@@ -370,8 +370,8 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                 time.sleep(2)
     
     except Exception as e:
-        script_logger.error(f"Error: {e} for userId: {userId}, data : {inserted_rows_data}")
-        send_slack_message(f"Error: {e} for userId: {userId}, data : {inserted_rows_data}")
+        script_logger.error(f"Error in Make Trade: {e} for userId: {userId}, data : {inserted_rows_data}")
+        send_slack_message(f"Error in Make Trade: {e} for userId: {userId}, data : {inserted_rows_data}")
 
 
 def get_client(userId, password):    
@@ -450,8 +450,8 @@ def close_trade(user_client, removed_comments, userId):
                     response = user_client.commandExecute("tradeTransaction", args)
     
     except Exception as e:
-        script_logger.error(f"Error: {e} for userId: {userId}, data: {removed_comments}")
-        send_slack_message(f"Error: {e} for userId: {userId}, data: {removed_comments}")
+        script_logger.error(f"Error in close trade: {e} for userId: {userId}, data: {removed_comments}")
+        send_slack_message(f"Error in close trade: {e} for userId: {userId}, data: {removed_comments}")
 
 
 def update_verification(xstation_id, verification_status):
