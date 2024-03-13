@@ -21,6 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
+        sudo apt update && sudo apt install postgresql && sudo systemctl start postgresql
 
     - name: Store variables
       env:
