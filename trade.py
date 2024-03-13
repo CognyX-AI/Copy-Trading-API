@@ -363,6 +363,8 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                 
                 if response['status'] == True:
                     print("Trade successfully executed.")
+                elif response['errorCode'] == 'BE127':
+                    print('Value of Trade too low')
                 else:
                     print("Trade execution failed. Error code:", response['errorCode'])
                     send_slack_message(f"Trade failed for userId: {userId}, Error code: {response['errorCode']}, data : {inserted_rows_data}")
