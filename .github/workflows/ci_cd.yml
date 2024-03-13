@@ -32,12 +32,10 @@ jobs:
     - name: Store variables
       env:
         PRIVATE_KEY: ${{ secrets.SSH_KEY }}
-        SERVER_API: ${{ secrets.SERVER_API }}
       run: |
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
 
     - name: Deploy to production
       if: success()
       run: |
-        echo "Server API: $SERVER_API"
-        ssh -o StrictHostKeyChecking=no -i private_key "$SERVER_API" 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'      
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_DEV }} 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'      
