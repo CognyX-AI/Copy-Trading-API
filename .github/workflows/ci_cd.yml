@@ -39,4 +39,5 @@ jobs:
     - name: Deploy to production
       if: success()
       run: |
+        echo "Server API: $SERVER_API"
         ssh -o StrictHostKeyChecking=no -i private_key $SERVER_API 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'      
