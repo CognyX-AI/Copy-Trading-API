@@ -3,7 +3,7 @@ name: CI/CD
 on:
   push:
     branches:
-      - dev-api
+      - dev-trading
 
 jobs:
   build:
@@ -22,20 +22,30 @@ jobs:
       run: |
         pip install -r requirements.txt
 
-    - name: Test API
-      run: |
-        python3 API.py &
-        echo $! > api_pid.txt
-        sleep 10 
-        kill $(cat api_pid.txt) || true
-
     - name: Store variables
       env:
         PRIVATE_KEY: ${{ secrets.SSH_KEY }}
       run: |
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+  
+    - name: Stop trading server
+      if: success()
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING }} 'sudo systemctl stop api.service'
+
+    - name: Test Code
+      run: |
+        python3 trade.py &
+        echo $! > trade_pid.txt
+        sleep 2 
+        kill $(cat trade_pid.txt) || true
 
     - name: Deploy to production
       if: success()
       run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_API }} 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'      
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING }} 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-trading && source env/bin/activate && pip install -r requirements.txt && sudo systemctl restart trade.service'
+      
+    - name: Stop trading server
+      if: failure()
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING }} 'sudo systemctl stop api.service'
