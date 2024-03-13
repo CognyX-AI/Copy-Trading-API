@@ -22,6 +22,10 @@ jobs:
       run: |
         pip install -r requirements.txt
 
+    - name: Test API
+      run: |
+        python3 API.py
+
     - name: Store variables
       env:
         PRIVATE_KEY: ${{ secrets.SSH_KEY }}
@@ -32,4 +36,5 @@ jobs:
     - name: Deploy to production
       if: success()
       run: |
-        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_API 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'
+        echo "Server API: $SERVER_API"
+        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_API 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'      
