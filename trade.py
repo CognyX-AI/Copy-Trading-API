@@ -285,7 +285,7 @@ def print_users_trades():
 
 def get_all_users():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE AND is_active = TRUE AND master_id_id IS NOT NULL")
+        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE AND is_active = TRUE AND master_id_id IS NOT NULL AND is_paused = FALSE")
         rows = cursor_user.fetchall()
         return rows        
 
