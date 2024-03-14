@@ -509,7 +509,13 @@ def update_master_verification(xstation_id, verification_status):
 
 def load_masters():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_master_xstation WHERE verification = TRUE")
+        cursor_user.execute("""
+            SELECT u.id, u.xstation_id, u.password, u.verification, u.min_deposit, u.account_type_stock, u.stripe_product_id_id, user_id_id
+            FROM users_credentials_master_xstation AS u
+            JOIN products_product AS p ON u.stripe_product_id_id = p.stripe_product_id
+            WHERE u.verification = TRUE AND is_active = TRUE;
+        """)
+        
         rows = cursor_user.fetchall()
         
     except (Exception, psycopg2.Error) as error:
