@@ -363,15 +363,17 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                 
                 if response['status'] == True:
                     print("Trade successfully executed.")
+                elif response['errorCode'] == 'BE127':
+                    print('Value of Trade too low')
                 else:
                     print("Trade execution failed. Error code:", response['errorCode'])
-                    send_slack_message(f"Trade failed for userId: {userId}")
+                    send_slack_message(f"Trade failed for userId: {userId}, Error code: {response['errorCode']}, data : {inserted_rows_data}")
                 
                 time.sleep(2)
     
     except Exception as e:
-        script_logger.error(f"Error: {e} for userId: {userId}, data : {inserted_rows_data}")
-        send_slack_message(f"Error: {e} for userId: {userId}, data : {inserted_rows_data}")
+        script_logger.error(f"Error in Make Trade: {e} for userId: {userId}, data : {inserted_rows_data}")
+        send_slack_message(f"Error in Make Trade: {e} for userId: {userId}, data : {inserted_rows_data}")
 
 
 def get_client(userId, password):    
@@ -450,8 +452,8 @@ def close_trade(user_client, removed_comments, userId):
                     response = user_client.commandExecute("tradeTransaction", args)
     
     except Exception as e:
-        script_logger.error(f"Error: {e} for userId: {userId}, data: {removed_comments}")
-        send_slack_message(f"Error: {e} for userId: {userId}, data: {removed_comments}")
+        script_logger.error(f"Error in close trade: {e} for userId: {userId}, data: {removed_comments}")
+        send_slack_message(f"Error in close trade: {e} for userId: {userId}, data: {removed_comments}")
 
 
 def update_verification(xstation_id, verification_status):
