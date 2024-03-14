@@ -247,7 +247,10 @@ def close_trade():
         }
     }
                     
-    data = client.commandExecute("tradeTransaction", args)['returnData']
+    try:            
+        data = client.commandExecute("tradeTransaction", args)['returnData']
+    except:
+        return jsonify({'message':"Markets are closed"}), 400
                     
     time.sleep(1)
                     
