@@ -67,7 +67,7 @@ def check_balance(user_id, password, min_deposit):
     data = client.commandExecute("getMarginLevel")['returnData']
     
     client.disconnect()
-    return data['balance'] > min_deposit
+    return data['margin_free'] > min_deposit
 
 
 @app.route('/login-user', methods=['POST'])
@@ -109,7 +109,7 @@ def get_balance():
     data = client.commandExecute("getMarginLevel")['returnData']
     client.disconnect()
     
-    return jsonify({'balance': data['balance']}), 200
+    return jsonify({'balance': data['margin_free']}), 200
     
     
 @app.route('/trade-history', methods=['POST'])
