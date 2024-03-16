@@ -138,7 +138,13 @@ def get_trade_history():
     data = data_open + data_history
     client.disconnect()
     
-    return jsonify({'history': data}), 200
+    time_series = {}
+    total_profit = 0
+    for row in data:
+        total_profit += row['profit']
+        time_series[row['open_time']] = total_profit
+        
+    return jsonify({'history': data, 'time_series' : time_series}), 200
 
 @app.route('/closed-trades', methods=['POST'])
 def get_closed_trades():
