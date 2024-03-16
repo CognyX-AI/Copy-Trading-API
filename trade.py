@@ -285,7 +285,7 @@ def print_users_trades():
 
 def get_all_users():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE AND is_active = TRUE AND master_id_id IS NOT NULL")
+        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE AND is_active = TRUE AND master_id_id IS NOT NULL AND is_paused = FALSE")
         rows = cursor_user.fetchall()
         return rows        
 
@@ -332,8 +332,9 @@ def get_balance_master(master_id, masters):
 
 def make_trade(user_client, inserted_rows_data, userId, master_id, master_balances, allocated_amount, forex_multiplier):   
     try:
-        user_balance = allocated_amount if allocated_amount else get_balance_user(user_client)
-        master_balance = master_balances[master_id]
+        if any(row['is_stock'] for row in inserted_rows_data):
+            user_balance = allocated_amount if allocated_amount else get_balance_user(user_client)
+            master_balance = master_balances[master_id]
         
         for inserted_row_data in inserted_rows_data: 
             if inserted_row_data['is_stock']:
@@ -509,7 +510,13 @@ def update_master_verification(xstation_id, verification_status):
 
 def load_masters():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_master_xstation WHERE verification = TRUE")
+        cursor_user.execute("""
+            SELECT u.id, u.xstation_id, u.password, u.verification, u.min_deposit, u.account_type_stock, u.stripe_product_id_id, user_id_id
+            FROM users_credentials_master_xstation AS u
+            JOIN products_product AS p ON u.stripe_product_id_id = p.stripe_product_id
+            WHERE u.verification = TRUE AND is_active = TRUE;
+        """)
+        
         rows = cursor_user.fetchall()
         
     except (Exception, psycopg2.Error) as error:
