@@ -165,7 +165,8 @@ def get_trade_history():
         'profitability' : 1 if total_trades == 0 else profit_trades / total_trades,
         'avg_profit' : 0 if total_trades == 0 else total_profit / total_trades,
         'best_trade' : best_trade,
-        'worst_trade' : worst_trade
+        'worst_trade' : worst_trade,
+        'total_profit' : total_profit
         }), 200
 
 @app.route('/closed-trades', methods=['POST'])
