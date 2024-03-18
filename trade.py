@@ -670,13 +670,4 @@ def main():
             
     
 if __name__ == '__main__':
-    #main()
-    masters = load_masters()
-    master_keys = list(masters.keys())
-    master_balances = {}
-    for master_key in master_keys:
-        master_balances[master_key] = get_balance_user(masters[master_key][0])
-                        
-    users = get_all_users()                
-    copy_all_to_users(users, masters, master_balances)
-                    
+    main()                
