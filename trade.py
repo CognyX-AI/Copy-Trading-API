@@ -553,6 +553,25 @@ def send_check():
     url = os.environ.get('API_URL') + 'check-api-call'
     response = requests.get(url)
 
+def copy_all_to_users(users, masters, master_balances):
+    for user in users:
+        copy_prev = user[10]
+        master_id = user[5]
+        
+        if copy_prev:
+            user_client = APIClient()
+            loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
+            
+            if masters[master_id][1]:
+                master_balance = master_balances[user[5]]
+                user_balance = get_balance_user(user_client)
+                V = user_balance / master_balance       
+            else:
+                V = user[8]
+                
+            trades_data = get_trades(masters[master_id][0])
+        
+
 def main():
     
     # Reset trades table
@@ -576,14 +595,15 @@ def main():
                     inserted_rows_data.extend(inserted_rows_data_tmp)
                     removed_comments.extend(removed_comments_tmp)
                 
-                if inserted_rows_data or removed_comments:
                     users = get_all_users()
                     
                     master_balances = {}
                     for master_key in master_keys:
                         master_balances[master_key] = get_balance_user(masters[master_key][0])
+                        
+                    copy_all_to_users(users, masters, master_balances)
                     
-                    if users:
+                    if users and (inserted_rows_data or removed_comments):
                         with ThreadPoolExecutor(max_workers=len(users)) as executor:
                             for user in users:
                                 executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances)
@@ -601,4 +621,13 @@ def main():
             
     
 if __name__ == '__main__':
-    main()
+    #main()
+    masters = load_masters()
+    master_keys = list(masters.keys())
+    master_balances = {}
+    for master_key in master_keys:
+        master_balances[master_key] = get_balance_user(masters[master_key][0])
+                        
+    users = get_all_users()                
+    copy_all_to_users(users, masters, master_balances)
+                    
