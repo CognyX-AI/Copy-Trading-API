@@ -138,7 +138,35 @@ def get_trade_history():
     data = data_open + data_history
     client.disconnect()
     
-    return jsonify({'history': data}), 200
+    time_series = {}
+    total_profit = 0
+    total_trades = 0
+    profit_trades = 0
+    best_trade = 0
+    worst_trade = 0
+    
+    for row in data:
+        total_profit += row['profit']
+        time_series[row['open_time']] = total_profit
+        total_trades += 1
+        profit_trades += 1 if row['profit'] > 0 else 0
+        
+        if row['profit'] > best_trade:
+            best_trade = row['profit']
+            
+        if row['profit'] < worst_trade:
+            worst_trade = row['profit']
+        
+    return jsonify({
+        'history': data, 
+        'time_series' : time_series,
+        'total_trades' : total_trades,
+        'profit_trades' : profit_trades,
+        'profitability' : 1 if total_trades == 0 else profit_trades / total_trades,
+        'avg_profit' : 0 if total_trades == 0 else total_profit / total_trades,
+        'best_trade' : best_trade,
+        'worst_trade' : worst_trade
+        }), 200
 
 @app.route('/closed-trades', methods=['POST'])
 def get_closed_trades():

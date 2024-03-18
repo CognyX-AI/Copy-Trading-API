@@ -459,7 +459,6 @@ def close_trade(user_client, removed_comments, userId):
 
 def update_verification(xstation_id, verification_status):
     try:
-        print("xstation_id: ", xstation_id)
         cursor_user.execute(f"UPDATE users_credentials_xstation SET verification = {verification_status} WHERE xstation_id = {xstation_id}")
         conn_user.commit()
     except (Exception, psycopg2.Error) as error:
@@ -553,6 +552,75 @@ def send_check():
     url = os.environ.get('API_URL') + 'check-api-call'
     response = requests.get(url)
 
+def update_copy_prev(xstation_id, copy_prev):
+    try:
+        cursor_user.execute(f"UPDATE users_credentials_xstation SET copy_prev = {copy_prev} WHERE xstation_id = {xstation_id}")
+        conn_user.commit()
+    except (Exception, psycopg2.Error) as error:
+        print("Error while updating verification status:", error)
+
+
+def copy_all_make_trade(user_client, trades_data, V):
+    for trade in trades_data:
+        try:
+            if round((trade['volume'] * V), 2) <= 0:
+                    return
+                
+            args = {
+                "tradeTransInfo": {
+                "cmd": trade['cmd'],
+                "comment": str(trade['order']),
+                "expiration": 0,
+                "price": trade['open_price'],
+                "sl": trade['sl'],
+                "tp": trade['tp'],
+                "symbol": trade['symbol'],
+                "type": 0,
+                "volume": round((trade['volume'] * V), 2)
+                }
+            }
+                    
+            response = user_client.commandExecute("tradeTransaction", args)
+                
+            if response['status'] == True:
+                print("Trade successfully executed.")
+            elif response['errorCode'] == 'BE127':
+                print('Value of Trade too low')
+            else:
+                print("Trade execution failed. Error code:", response['errorCode'])
+                send_slack_message(f"Trade failed Error code: {response['errorCode']}, data : {trade}")
+                
+            time.sleep(1)
+    
+        except Exception as e:
+            script_logger.error(f"Error in Copy new Make Trade: {e} data : {trade}")
+            send_slack_message(f"Error in Copy new Make Trade: {e} data : {trade}")
+        
+
+def copy_all_to_users(users, masters, master_balances):
+    for user in users:
+        copy_prev = user[10]
+        master_id = user[5]
+        allocated_amount = user[7]
+        forex_multiplier = user[8]
+        
+        if copy_prev:
+            user_client = APIClient()
+            loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
+            
+            if masters[master_id][1]:
+                master_balance = master_balances[user[5]]
+                user_balance = allocated_amount if allocated_amount else get_balance_user(user_client)
+                V = user_balance / master_balance       
+            else:
+                V = forex_multiplier
+            
+            trades_data = get_trades(masters[master_id][0])
+            copy_all_make_trade(user_client, trades_data, V)
+    
+            update_copy_prev(user[1], False)
+        
+
 def main():
     
     # Reset trades table
@@ -576,14 +644,15 @@ def main():
                     inserted_rows_data.extend(inserted_rows_data_tmp)
                     removed_comments.extend(removed_comments_tmp)
                 
-                if inserted_rows_data or removed_comments:
                     users = get_all_users()
                     
                     master_balances = {}
                     for master_key in master_keys:
                         master_balances[master_key] = get_balance_user(masters[master_key][0])
+                        
+                    copy_all_to_users(users, masters, master_balances)
                     
-                    if users:
+                    if users and (inserted_rows_data or removed_comments):
                         with ThreadPoolExecutor(max_workers=len(users)) as executor:
                             for user in users:
                                 executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances)
@@ -601,4 +670,4 @@ def main():
             
     
 if __name__ == '__main__':
-    main()
+    main()                
