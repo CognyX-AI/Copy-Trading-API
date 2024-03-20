@@ -356,7 +356,7 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                             "tp": inserted_row_data['tp'],
                             "symbol": inserted_row_data['symbol'],
                             "type": 0,
-                            "volume": round((inserted_row_data['volume'] * V), 2)
+                            "volume": min(round((inserted_row_data['volume'] * V), 2), 100)
                         }
                 }
                 
