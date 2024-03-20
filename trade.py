@@ -335,8 +335,8 @@ def create_trades_made_table():
         CREATE TABLE IF NOT EXISTS trades_made (
             id SERIAL PRIMARY KEY,
             datetime TIMESTAMP NOT NULL,
-            userid INT NOT NULL,
-            masterid INT NOT NULL,
+            userid VARCHAR(255) NOT NULL,
+            masterid VARCHAR(255) NOT NULL,
             symbol VARCHAR(255) NOT NULL,
             volume NUMERIC(10, 2) NOT NULL,
             success BOOLEAN NOT NULL
@@ -360,7 +360,7 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                 return
             
             if inserted_row_data['master_id'] == master_id:
-                volume = min(round((inserted_row_data['volume'] * V), 2))
+                volume = min(round((inserted_row_data['volume'] * V), 2), 100)
                 
                 args = {
                         "tradeTransInfo": {
@@ -372,7 +372,7 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                             "tp": inserted_row_data['tp'],
                             "symbol": inserted_row_data['symbol'],
                             "type": 0,
-                        "volume": volume
+                            "volume": volume
                     }
                 }
                 
