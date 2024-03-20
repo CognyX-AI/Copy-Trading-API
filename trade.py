@@ -330,6 +330,20 @@ def get_balance_master(master_id, masters):
     
     return master_balance
 
+def create_trades_made_table():
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS trades_made (
+            id SERIAL PRIMARY KEY,
+            datetime TIMESTAMP NOT NULL,
+            userid INT NOT NULL,
+            masterid INT NOT NULL,
+            symbol VARCHAR(255) NOT NULL,
+            volume NUMERIC(10, 2) NOT NULL,
+            success BOOLEAN NOT NULL
+        );
+    """)
+    conn.commit()
+
 def make_trade(user_client, inserted_rows_data, userId, master_id, master_balances, allocated_amount, forex_multiplier):   
     try:
         if any(row['is_stock'] for row in inserted_rows_data):
@@ -346,6 +360,8 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                 return
             
             if inserted_row_data['master_id'] == master_id:
+                volume = min(round((inserted_row_data['volume'] * V), 2))
+                
                 args = {
                         "tradeTransInfo": {
                             "cmd": inserted_row_data['cmd'],
@@ -356,19 +372,27 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
                             "tp": inserted_row_data['tp'],
                             "symbol": inserted_row_data['symbol'],
                             "type": 0,
-                            "volume": max(0.01, min(round((inserted_row_data['volume'] * V), 2), 100))
-                        }
+                        "volume": volume
+                    }
                 }
                 
                 response = user_client.commandExecute("tradeTransaction", args)
                 
+                status = False
                 if response['status'] == True:
                     print("Trade successfully executed.")
+                    status = True
                 elif response['errorCode'] == 'BE127':
                     print('Value of Trade too low')
                 else:
                     print("Trade execution failed. Error code:", response['errorCode'])
                     send_slack_message(f"Trade failed for userId: {userId}, Error code: {response['errorCode']}, data : {inserted_rows_data}")
+                
+                current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                sql = """INSERT INTO trades_made (datetime, userid, masterid, symbol, volume, success) VALUES (%s, %s, %s, %s, %s, %s)"""
+                values = (current_time, userId, master_id, inserted_row_data['symbol'], volume, status)
+                cursor.execute(sql, values)
+                conn.commit()
                 
                 time.sleep(2)
     
@@ -626,6 +650,7 @@ def main():
     # Reset trades table
     # drop_tables(['open_trades', 'past_trades'])
     # create_trade_tables()
+    # create_trades_made_table()
     
     counter = 0
     masters = load_masters()
