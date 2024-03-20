@@ -344,7 +344,7 @@ def create_trades_made_table():
     """)
     conn.commit()
 
-def make_trade(user_client, inserted_rows_data, userId, master_id, master_balances, allocated_amount, forex_multiplier):   
+def make_trade(user_client, inserted_rows_data, userId, master_id, master_balances, allocated_amount, forex_multiplier, product_dic):   
     try:
         if any(row['is_stock'] for row in inserted_rows_data):
             user_balance = allocated_amount if allocated_amount else get_balance_user(user_client)
@@ -361,11 +361,11 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
             
             if inserted_row_data['master_id'] == master_id:
                 volume = min(round((inserted_row_data['volume'] * V), 2), 100)
-                
+                comment = product_dic[master_id] + ' ' + str(inserted_row_data['order'])
                 args = {
                         "tradeTransInfo": {
                             "cmd": inserted_row_data['cmd'],
-                            "comment": str(inserted_row_data['order']),
+                            "comment": comment,
                             "expiration": 0,
                             "price": inserted_row_data['open_price'],
                             "sl": inserted_row_data['sl'],
@@ -430,11 +430,12 @@ def get_trades(client):
     return response
 
 
-def close_trade(user_client, removed_comments, userId):    
+def close_trade(user_client, removed_comments, userId, master_id, product_dic):    
     try:
         for removed_comment in removed_comments:
             if removed_comment[1]:
-                trade_by_comment = get_order_by_comment(user_client, str(removed_comment[0]))
+                comment = product_dic[master_id] + ' ' + str(removed_comment[0])
+                trade_by_comment = get_order_by_comment(user_client, comment)
 
                 if trade_by_comment is None:
                     continue
@@ -489,7 +490,7 @@ def update_verification(xstation_id, verification_status):
         print("Error while updating verification status:", error)
 
 
-def user_trading(user, inserted_rows_data, removed_comments, masters, master_balances):
+def user_trading(user, inserted_rows_data, removed_comments, masters, master_balances, product_dic):
     user_client = None
     try:
         user_client = APIClient()
@@ -498,10 +499,10 @@ def user_trading(user, inserted_rows_data, removed_comments, masters, master_bal
                   
         if loginResponse['status']:  
             if inserted_rows_data:
-                make_trade(user_client, inserted_rows_data, user[1], master_id, master_balances, user[7], user[8])
+                make_trade(user_client, inserted_rows_data, user[1], master_id, master_balances, user[7], user[8], product_dic)
             
             if removed_comments:
-                close_trade(user_client, removed_comments, user[1]) 
+                close_trade(user_client, removed_comments, user[1], master_id, product_dic) 
         
         else:
             print("Failed: ", user[1])
@@ -644,6 +645,25 @@ def copy_all_to_users(users, masters, master_balances):
     
             update_copy_prev(user[1], False)
         
+def copy_products_dict():
+    try:
+        cursor_user.execute("""
+            SELECT uc.id, pp.name
+            FROM users_credentials_master_xstation AS uc
+            JOIN products_product AS pp ON uc.stripe_product_id_id = pp.stripe_product_id
+            WHERE pp.is_copy_trading = TRUE
+            AND pp.is_active = TRUE
+            AND pp.show = TRUE;
+        """)
+        rows = cursor_user.fetchall()
+        
+        dic = {}
+        for row in rows:
+            dic[row[0]] = row[1].replace(' ', '_')
+        
+        return dic
+    except:
+        pass
 
 def main():
     
@@ -678,9 +698,11 @@ def main():
                     copy_all_to_users(users, masters, master_balances)
                     
                     if users and (inserted_rows_data or removed_comments):
+                        product_dict = copy_products_dict()
+                        
                         with ThreadPoolExecutor(max_workers=len(users)) as executor:
                             for user in users:
-                                executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances)
+                                executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances, product_dict)
                 
                 time.sleep(5)
         
