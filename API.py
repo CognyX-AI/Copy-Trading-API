@@ -107,9 +107,13 @@ def get_balance():
     client = APIClient()
     loginResponse = client.execute(loginCommand(userId=user_id, password=password))
     data = client.commandExecute("getMarginLevel")['returnData']
+    args =  {
+		"openedOnly": True,
+	}
+    data_open = client.commandExecute("getTrades", args)['returnData']
     client.disconnect()
     
-    return jsonify({'balance': data['margin_free']}), 200
+    return jsonify({'balance': data['margin_free'], 'total_balance': data['balance'], 'open_trades' : len(data_open)}), 200
     
     
 @app.route('/trade-history', methods=['POST'])
