@@ -3,7 +3,7 @@ name: CI/CD
 on:
   push:
     branches:
-      - dev-trading
+      - staging-trading
 
 jobs:
   build:
@@ -38,7 +38,7 @@ jobs:
     - name: Stop trading server
       if: success()
       run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING }} 'sudo systemctl stop trade.service'
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING_STAGING }} 'sudo systemctl stop trade.service'
 
     - name: Test Code
       run: |
@@ -50,9 +50,9 @@ jobs:
     - name: Deploy to production
       if: success()
       run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING }} 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-trading && source env/bin/activate && pip install -r requirements.txt && sudo systemctl restart trade.service'
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING_STAGING }} 'cd Copy-Trading-API/ && git stash && git pull && git checkout staging-trading && source env/bin/activate && pip install -r requirements.txt && sudo systemctl restart trade.service'
       
     - name: Start trading server
       if: failure()
       run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING }} 'sudo systemctl start trade.service'
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING_STAGING }} 'sudo systemctl start trade.service'
