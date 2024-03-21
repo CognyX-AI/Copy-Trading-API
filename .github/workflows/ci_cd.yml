@@ -3,7 +3,7 @@ name: CI/CD
 on:
   push:
     branches:
-      - dev-api
+      - staging-api
 
 jobs:
   build:
@@ -38,4 +38,4 @@ jobs:
     - name: Deploy to production
       if: success()
       run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_API }} 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'      
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_API_STAGING }} 'cd Copy-Trading-API/ && git stash && git pull && git checkout staging-api && pipenv install -r requirements.txt && sudo systemctl restart api.service'      
