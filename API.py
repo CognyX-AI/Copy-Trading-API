@@ -149,8 +149,8 @@ def get_trade_history():
     total_profit = 0
     total_trades = 0
     profit_trades = 0
-    best_trade = 0
-    worst_trade = 0
+    best_trade = None
+    worst_trade = None
     
     for row in sorted_data:
         total_profit += row['profit']
@@ -158,10 +158,10 @@ def get_trade_history():
         total_trades += 1
         profit_trades += 1 if row['profit'] > 0 else 0
         
-        if row['profit'] > best_trade:
+        if best_trade is None or row['profit'] > best_trade:
             best_trade = row['profit']
             
-        if row['profit'] < worst_trade:
+        if worst_trade is None or row['profit'] < worst_trade:
             worst_trade = row['profit']
         
     return jsonify({
