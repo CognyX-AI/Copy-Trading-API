@@ -689,20 +689,20 @@ def main():
                     inserted_rows_data.extend(inserted_rows_data_tmp)
                     removed_comments.extend(removed_comments_tmp)
                 
-                    users = get_all_users()
+                users = get_all_users()
+                
+                master_balances = {}
+                for master_key in master_keys:
+                    master_balances[master_key] = get_balance_user(masters[master_key][0])
                     
-                    master_balances = {}
-                    for master_key in master_keys:
-                        master_balances[master_key] = get_balance_user(masters[master_key][0])
-                        
-                    copy_all_to_users(users, masters, master_balances)
+                copy_all_to_users(users, masters, master_balances)
+                
+                if users and (inserted_rows_data or removed_comments):
+                    product_dict = copy_products_dict()
                     
-                    if users and (inserted_rows_data or removed_comments):
-                        product_dict = copy_products_dict()
-                        
-                        with ThreadPoolExecutor(max_workers=len(users)) as executor:
-                            for user in users:
-                                executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances, product_dict)
+                    with ThreadPoolExecutor(max_workers=len(users)) as executor:
+                        for user in users:
+                            executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances, product_dict)
                 
                 time.sleep(5)
         
