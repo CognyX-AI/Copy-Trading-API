@@ -285,7 +285,10 @@ def print_users_trades():
 
 def get_all_users():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE AND is_active = TRUE AND master_id_id IS NOT NULL AND is_paused = FALSE")
+        cursor_user.execute("""
+                            SELECT xc.id, cx.xstation_id, cx.password, cx.verification, xc.is_active, xc.master_id_id, cx.user_id_id, xc.allocated_balance, xc.forex_multiplier, xc.is_paused, xc.copy_prev FROM users_xstation_connection as xc JOIN users_credentials_xstation as cx ON xc.xstation_table_id_id = cx.id 
+                            WHERE cx.verification = TRUE AND xc.is_active = TRUE AND xc.master_id_id IS NOT NULL AND xc.is_paused = FALSE
+                            """)
         rows = cursor_user.fetchall()
         return rows        
 
@@ -577,9 +580,9 @@ def send_check():
     url = os.environ.get('API_URL') + 'check-api-call'
     response = requests.get(url)
 
-def update_copy_prev(xstation_id, copy_prev):
+def update_copy_prev(connection_id, copy_prev):
     try:
-        cursor_user.execute(f"UPDATE users_credentials_xstation SET copy_prev = {copy_prev} WHERE xstation_id = {xstation_id}")
+        cursor_user.execute(f"UPDATE users_xstation_connection SET copy_prev = {copy_prev} WHERE id = {connection_id}")
         conn_user.commit()
     except (Exception, psycopg2.Error) as error:
         print("Error while updating verification status:", error)
@@ -624,6 +627,7 @@ def copy_all_make_trade(user_client, trades_data, V):
 
 def copy_all_to_users(users, masters, master_balances):
     for user in users:
+        connection_id = user[0]
         copy_prev = user[10]
         master_id = user[5]
         allocated_amount = user[7]
@@ -643,7 +647,7 @@ def copy_all_to_users(users, masters, master_balances):
             trades_data = get_trades(masters[master_id][0])
             copy_all_make_trade(user_client, trades_data, V)
     
-            update_copy_prev(user[1], False)
+            update_copy_prev(connection_id, False)
         
 def copy_products_dict():
     try:
