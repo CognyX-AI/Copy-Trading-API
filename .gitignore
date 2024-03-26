@@ -1,4 +1,5 @@
 .env
+.env.*
 __pycache__
 exp.py
 Logfile.log
