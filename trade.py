@@ -160,7 +160,15 @@ def drop_tables(table_names):
         print("Error while connecting to PostgreSQL:", error)
 
 
-def insert_data_trades_table(trades_data, master_id, is_stock):
+def get_symbol_cateogry(user_client, symbol):
+    args = {
+            "symbol": symbol
+    }
+                    
+    response = user_client.commandExecute("getSymbol", args)
+    return response['returnData']['categoryName']
+
+def insert_data_trades_table(trades_data, master_id, is_stock, client):
     inserted_rows_data = []
     removed_comments = []
 
@@ -203,6 +211,7 @@ def insert_data_trades_table(trades_data, master_id, is_stock):
                         'tp': row[9],
                         'master_id' : master_id,
                         'is_stock' : is_stock,
+                        'category' : get_symbol_cateogry(client ,row[3])
                     }
                 )
                
@@ -354,10 +363,11 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
             master_balance = master_balances[master_id]
         
         for inserted_row_data in inserted_rows_data: 
-            if inserted_row_data['is_stock']:
-                V = user_balance / master_balance
-            else:
+            if not inserted_row_data['is_stock'] or inserted_row_data['category'] in ("FX", "CMD"):
                 V = forex_multiplier if forex_multiplier else 1
+            else:
+                V = user_balance / master_balance
+                
             
             if round((inserted_row_data['volume'] * V), 2) <= 0:
                 return
@@ -582,8 +592,8 @@ def send_check():
 
 def update_copy_prev(connection_id, copy_prev):
     try:
-        cursor_user.execute(f"UPDATE users_xstation_connection SET copy_prev = {copy_prev} WHERE id = {connection_id}")
-        conn_user.commit()
+        query = "UPDATE users_xstation_connection SET copy_prev = %s WHERE id = %s"
+        cursor_user.execute(query, (copy_prev, connection_id))
     except (Exception, psycopg2.Error) as error:
         print("Error while updating verification status:", error)
 
@@ -689,7 +699,7 @@ def main():
                 
                 for key in master_keys:
                     trades_data = get_trades(masters[key][0])
-                    inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key, masters[key][1])
+                    inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key, masters[key][1], masters[key][0])
                     inserted_rows_data.extend(inserted_rows_data_tmp)
                     removed_comments.extend(removed_comments_tmp)
                 
