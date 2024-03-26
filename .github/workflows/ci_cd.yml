@@ -1,0 +1,58 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - dev-trading
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.x
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Install dependencies and PostgreSQL
+      run: |
+        sudo apt update
+        sudo apt install -y postgresql postgresql-contrib
+        sudo systemctl start postgresql
+        sleep 5  # Wait for PostgreSQL to start properly
+
+    - name: Store variables
+      env:
+        PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+      run: |
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+  
+    - name: Stop trading server
+      if: success()
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING }} 'sudo systemctl stop trade.service'
+
+    - name: Test Code
+      run: |
+        python3 trade.py &
+        echo $! > trade_pid.txt
+        sleep 2 
+        kill $(cat trade_pid.txt) || true
+
+    - name: Deploy to production
+      if: success()
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING_DEV }} 'cd Copy-Trading-API/ && git stash && git pull && git checkout dev-trading && pipenv install -r requirements.txt && sudo systemctl restart trade.service'
+      
+    - name: Start trading server
+      if: failure()
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING_DEV }} 'sudo systemctl start trade.service'
