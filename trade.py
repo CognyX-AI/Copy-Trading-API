@@ -437,34 +437,7 @@ def close_trade(user_client, removed_comments, userId, master_id, product_dic):
                 comment = product_dic[master_id] + ' ' + str(removed_comment[0])
                 trade_by_comment = get_order_by_comment(user_client, comment)
 
-                if trade_by_comment is None:
-                    continue
-                
-                args = {
-                    "tradeTransInfo": {
-                        "type": 2,
-                        "order": int(trade_by_comment['order']),
-                        "symbol": trade_by_comment['symbol'],
-                        "price": trade_by_comment['close_price'],
-                        "volume": float(trade_by_comment['volume'])
-                    }
-                }
-                
-                data = user_client.commandExecute("tradeTransaction", args)['returnData']
-                
-                time.sleep(2)
-                
-                order_response = data['order']
-                
-                args =  {
-                    "order": order_response,
-                }
-        
-                response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
-                
-                if response["requestStatus"] in [0, 3]: 
-                    print("Trade successfully closed.")
-                else:
+                while trade_by_comment is not None:
                     args = {
                         "tradeTransInfo": {
                             "type": 2,
@@ -475,8 +448,35 @@ def close_trade(user_client, removed_comments, userId, master_id, product_dic):
                         }
                     }
                     
-                    response = user_client.commandExecute("tradeTransaction", args)
-    
+                    data = user_client.commandExecute("tradeTransaction", args)['returnData']
+                    
+                    time.sleep(2)
+                    
+                    order_response = data['order']
+                    
+                    args =  {
+                        "order": order_response,
+                    }
+            
+                    response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
+                    
+                    if response["requestStatus"] in [0, 3]: 
+                        print("Trade successfully closed.")
+                    else:
+                        args = {
+                            "tradeTransInfo": {
+                                "type": 2,
+                                "order": int(trade_by_comment['order']),
+                                "symbol": trade_by_comment['symbol'],
+                                "price": trade_by_comment['close_price'],
+                                "volume": float(trade_by_comment['volume'])
+                            }
+                        }
+                        
+                        response = user_client.commandExecute("tradeTransaction", args)
+                        
+                    trade_by_comment = get_order_by_comment(user_client, comment)
+        
     except Exception as e:
         script_logger.error(f"Error in close trade: {e} for userId: {userId}, data: {removed_comments}")
         send_slack_message(f"Error in close trade: {e} for userId: {userId}, data: {removed_comments}")
@@ -694,8 +694,10 @@ def main():
                 master_balances = {}
                 for master_key in master_keys:
                     master_balances[master_key] = get_balance_user(masters[master_key][0])
-                    
-                copy_all_to_users(users, masters, master_balances)
+ 
+                if users:    
+                    copy_all_to_users(users, masters, master_balances)
+
                 
                 if users and (inserted_rows_data or removed_comments):
                     product_dict = copy_products_dict()
@@ -704,7 +706,7 @@ def main():
                         for user in users:
                             executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances, product_dict)
                 
-                time.sleep(5)
+            time.sleep(5)
         
             counter += 1  
             if counter % 60 == 0:

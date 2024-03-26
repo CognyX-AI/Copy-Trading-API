@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import subprocess
+from operator import itemgetter
+
 
 app = Flask(__name__)
 last_api_call_time = time.time()
@@ -140,29 +142,30 @@ def get_trade_history():
     
     data_open = client.commandExecute("getTrades", args)['returnData']
     data = data_open + data_history
+    sorted_data = sorted(data, key=itemgetter('open_time'))  # Sort by open time
     client.disconnect()
     
     time_series = {}
     total_profit = 0
     total_trades = 0
     profit_trades = 0
-    best_trade = 0
-    worst_trade = 0
+    best_trade = None
+    worst_trade = None
     
-    for row in data:
+    for row in sorted_data:
         total_profit += row['profit']
         time_series[row['open_time']] = total_profit
         total_trades += 1
         profit_trades += 1 if row['profit'] > 0 else 0
         
-        if row['profit'] > best_trade:
+        if best_trade is None or row['profit'] > best_trade:
             best_trade = row['profit']
             
-        if row['profit'] < worst_trade:
+        if worst_trade is None or row['profit'] < worst_trade:
             worst_trade = row['profit']
         
     return jsonify({
-        'history': data, 
+        'history': sorted_data,
         'time_series' : time_series,
         'total_trades' : total_trades,
         'profit_trades' : profit_trades,
