@@ -304,6 +304,42 @@ def close_trade():
     else:
         return jsonify({'message':"Trade could not be closed."}), 500
     
+@app.route('/get-news', methods=['POST'])
+def get_news():
+    try:
+        data = request.json
+        user_id = data['user_id']
+        password = data['password']
+        
+        if not check_user(user_id, password):
+            return jsonify({'status': "Wrong Credentials"}), 401
+
+        client = APIClient()
+        loginResponse = client.execute(loginCommand(userId=user_id, password=password))
+        
+        current_timestamp = int(time.time() * 1000) 
+        try:
+            args = {
+                "end": current_timestamp,
+                "start": current_timestamp - 5000000
+            }
+            
+            response = client.commandExecute("getNews", args)   
+        except:
+            args = {
+                "end": current_timestamp,
+                "start": current_timestamp - 2000000
+            }
+            
+            response = client.commandExecute("getNews", args)  
+            
+        client.disconnect()
+
+        return jsonify({'news': response['returnData']}), 200
+    
+    except:
+        return jsonify({'message':"News could not be found."}), 500
+
 
 @app.route('/check-api-call', methods=['GET'])
 def check_api_call_route():

@@ -160,7 +160,15 @@ def drop_tables(table_names):
         print("Error while connecting to PostgreSQL:", error)
 
 
-def insert_data_trades_table(trades_data, master_id, is_stock):
+def get_symbol_cateogry(user_client, symbol):
+    args = {
+            "symbol": symbol
+    }
+                    
+    response = user_client.commandExecute("getSymbol", args)
+    return response['returnData']['categoryName']
+
+def insert_data_trades_table(trades_data, master_id, is_stock, client):
     inserted_rows_data = []
     removed_comments = []
 
@@ -203,6 +211,7 @@ def insert_data_trades_table(trades_data, master_id, is_stock):
                         'tp': row[9],
                         'master_id' : master_id,
                         'is_stock' : is_stock,
+                        'category' : get_symbol_cateogry(client ,row[3])
                     }
                 )
                
@@ -285,7 +294,10 @@ def print_users_trades():
 
 def get_all_users():
     try:
-        cursor_user.execute("SELECT * FROM users_credentials_xstation WHERE verification = TRUE AND is_active = TRUE AND master_id_id IS NOT NULL AND is_paused = FALSE")
+        cursor_user.execute("""
+                            SELECT xc.id, cx.xstation_id, cx.password, cx.verification, xc.is_active, xc.master_id_id, cx.user_id_id, xc.allocated_balance, xc.forex_multiplier, xc.is_paused, xc.copy_prev FROM users_xstation_connection as xc JOIN users_credentials_xstation as cx ON xc.xstation_table_id_id = cx.id 
+                            WHERE cx.verification = TRUE AND xc.is_active = TRUE AND xc.master_id_id IS NOT NULL AND xc.is_paused = FALSE
+                            """)
         rows = cursor_user.fetchall()
         return rows        
 
@@ -351,10 +363,11 @@ def make_trade(user_client, inserted_rows_data, userId, master_id, master_balanc
             master_balance = master_balances[master_id]
         
         for inserted_row_data in inserted_rows_data: 
-            if inserted_row_data['is_stock']:
-                V = user_balance / master_balance
-            else:
+            if not inserted_row_data['is_stock'] or inserted_row_data['category'] in ("FX", "CMD"):
                 V = forex_multiplier if forex_multiplier else 1
+            else:
+                V = user_balance / master_balance
+                
             
             if round((inserted_row_data['volume'] * V), 2) <= 0:
                 return
@@ -437,34 +450,7 @@ def close_trade(user_client, removed_comments, userId, master_id, product_dic):
                 comment = product_dic[master_id] + ' ' + str(removed_comment[0])
                 trade_by_comment = get_order_by_comment(user_client, comment)
 
-                if trade_by_comment is None:
-                    continue
-                
-                args = {
-                    "tradeTransInfo": {
-                        "type": 2,
-                        "order": int(trade_by_comment['order']),
-                        "symbol": trade_by_comment['symbol'],
-                        "price": trade_by_comment['close_price'],
-                        "volume": float(trade_by_comment['volume'])
-                    }
-                }
-                
-                data = user_client.commandExecute("tradeTransaction", args)['returnData']
-                
-                time.sleep(2)
-                
-                order_response = data['order']
-                
-                args =  {
-                    "order": order_response,
-                }
-        
-                response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
-                
-                if response["requestStatus"] in [0, 3]: 
-                    print("Trade successfully closed.")
-                else:
+                while trade_by_comment is not None:
                     args = {
                         "tradeTransInfo": {
                             "type": 2,
@@ -475,8 +461,35 @@ def close_trade(user_client, removed_comments, userId, master_id, product_dic):
                         }
                     }
                     
-                    response = user_client.commandExecute("tradeTransaction", args)
-    
+                    data = user_client.commandExecute("tradeTransaction", args)['returnData']
+                    
+                    time.sleep(2)
+                    
+                    order_response = data['order']
+                    
+                    args =  {
+                        "order": order_response,
+                    }
+            
+                    response = user_client.commandExecute("tradeTransactionStatus", args)['returnData']
+                    
+                    if response["requestStatus"] in [0, 3]: 
+                        print("Trade successfully closed.")
+                    else:
+                        args = {
+                            "tradeTransInfo": {
+                                "type": 2,
+                                "order": int(trade_by_comment['order']),
+                                "symbol": trade_by_comment['symbol'],
+                                "price": trade_by_comment['close_price'],
+                                "volume": float(trade_by_comment['volume'])
+                            }
+                        }
+                        
+                        response = user_client.commandExecute("tradeTransaction", args)
+                        
+                    trade_by_comment = get_order_by_comment(user_client, comment)
+        
     except Exception as e:
         script_logger.error(f"Error in close trade: {e} for userId: {userId}, data: {removed_comments}")
         send_slack_message(f"Error in close trade: {e} for userId: {userId}, data: {removed_comments}")
@@ -577,10 +590,10 @@ def send_check():
     url = os.environ.get('API_URL') + 'check-api-call'
     response = requests.get(url)
 
-def update_copy_prev(xstation_id, copy_prev):
+def update_copy_prev(connection_id, copy_prev):
     try:
-        cursor_user.execute(f"UPDATE users_credentials_xstation SET copy_prev = {copy_prev} WHERE xstation_id = {xstation_id}")
-        conn_user.commit()
+        query = "UPDATE users_xstation_connection SET copy_prev = %s WHERE id = %s"
+        cursor_user.execute(query, (copy_prev, connection_id))
     except (Exception, psycopg2.Error) as error:
         print("Error while updating verification status:", error)
 
@@ -624,6 +637,7 @@ def copy_all_make_trade(user_client, trades_data, V):
 
 def copy_all_to_users(users, masters, master_balances):
     for user in users:
+        connection_id = user[0]
         copy_prev = user[10]
         master_id = user[5]
         allocated_amount = user[7]
@@ -643,7 +657,7 @@ def copy_all_to_users(users, masters, master_balances):
             trades_data = get_trades(masters[master_id][0])
             copy_all_make_trade(user_client, trades_data, V)
     
-            update_copy_prev(user[1], False)
+            update_copy_prev(connection_id, False)
         
 def copy_products_dict():
     try:
@@ -659,7 +673,7 @@ def copy_products_dict():
         
         dic = {}
         for row in rows:
-            dic[row[0]] = row[1].replace(' ', '_')
+            dic[row[0]] = row[0].replace(' ', '_')
         
         return dic
     except:
@@ -685,7 +699,7 @@ def main():
                 
                 for key in master_keys:
                     trades_data = get_trades(masters[key][0])
-                    inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key, masters[key][1])
+                    inserted_rows_data_tmp, removed_comments_tmp = insert_data_trades_table(trades_data, key, masters[key][1], masters[key][0])
                     inserted_rows_data.extend(inserted_rows_data_tmp)
                     removed_comments.extend(removed_comments_tmp)
                 
@@ -694,8 +708,10 @@ def main():
                 master_balances = {}
                 for master_key in master_keys:
                     master_balances[master_key] = get_balance_user(masters[master_key][0])
-                    
-                copy_all_to_users(users, masters, master_balances)
+ 
+                if users:    
+                    copy_all_to_users(users, masters, master_balances)
+
                 
                 if users and (inserted_rows_data or removed_comments):
                     product_dict = copy_products_dict()
@@ -704,7 +720,7 @@ def main():
                         for user in users:
                             executor.submit(user_trading, user, inserted_rows_data, removed_comments, masters, master_balances, product_dict)
                 
-                time.sleep(5)
+            time.sleep(5)
         
             counter += 1  
             if counter % 60 == 0:
