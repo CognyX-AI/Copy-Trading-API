@@ -55,4 +55,5 @@ jobs:
     - name: Start trading server
       if: failure()
       run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING_DEV }} 'sudo systemctl start trade.service'
+        ssh -o StrictHostKeyChecking=no -i private_key ${{ secrets.SERVER_TRADING_DEV }} 'sudo systemctl start trade.service' 
+      
