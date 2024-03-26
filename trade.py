@@ -659,7 +659,7 @@ def copy_products_dict():
         
         dic = {}
         for row in rows:
-            dic[row[0]] = row[1].replace(' ', '_')
+            dic[row[0]] = row[0].replace(' ', '_')
         
         return dic
     except:
