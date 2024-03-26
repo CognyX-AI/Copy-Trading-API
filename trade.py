@@ -694,8 +694,9 @@ def main():
                 master_balances = {}
                 for master_key in master_keys:
                     master_balances[master_key] = get_balance_user(masters[master_key][0])
-                    
-                copy_all_to_users(users, masters, master_balances)
+                 
+                if users:    
+                    copy_all_to_users(users, masters, master_balances)
                 
                 if users and (inserted_rows_data or removed_comments):
                     product_dict = copy_products_dict()
