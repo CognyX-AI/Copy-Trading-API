@@ -410,7 +410,7 @@ def close_trade():
     
 @app.route('/get-news', methods=['POST'])
 def get_news():
-    if True:
+    try:
         data = request.json
         user_id = data['user_id']
         password = data['password']
@@ -447,7 +447,7 @@ def get_news():
         total_data = [dict(item) for item in total_data]
         return jsonify({'news': list(total_data)}), 200
     
-    else:
+    except:
         return jsonify({'message':"News could not be found."}), 500
 
 
