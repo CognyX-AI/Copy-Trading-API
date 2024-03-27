@@ -410,7 +410,7 @@ def close_trade():
     
 @app.route('/get-news', methods=['POST'])
 def get_news():
-    try:
+    if True:
         data = request.json
         user_id = data['user_id']
         password = data['password']
@@ -422,26 +422,32 @@ def get_news():
         loginResponse = client.execute(loginCommand(userId=user_id, password=password))
         
         current_timestamp = int(time.time() * 1000) 
-        try:
-            args = {
-                "end": current_timestamp,
-                "start": current_timestamp - 5000000
-            }
+        total_data = set()
+        
+        for i in range(1, 10):
+            try:
+                args = {
+                    "end": current_timestamp - 50000000 * (i - 1),
+                    "start": current_timestamp - 50000000 * i
+                }
+                
+                response = client.commandExecute("getNews", args)   
+                
+                for item in response['returnData']:
+                    total_data.add(tuple(item.items()))
+            except:
+                pass
             
-            response = client.commandExecute("getNews", args)   
-        except:
-            args = {
-                "end": current_timestamp,
-                "start": current_timestamp - 2000000
-            }
+
             
-            response = client.commandExecute("getNews", args)  
-            
+            # time.sleep(2)
+
         client.disconnect()
 
-        return jsonify({'news': response['returnData']}), 200
+        total_data = [dict(item) for item in total_data]
+        return jsonify({'news': list(total_data)}), 200
     
-    except:
+    else:
         return jsonify({'message':"News could not be found."}), 500
 
 
