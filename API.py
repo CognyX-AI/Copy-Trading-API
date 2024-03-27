@@ -29,7 +29,17 @@ conn = psycopg2.connect(
 )
 
 cursor = conn.cursor()
-
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS logo (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(255) UNIQUE,
+        name VARCHAR(255),
+        url VARCHAR(255)
+    )
+""")
+conn.commit()
+        
+                
 def send_slack_message(message):
     slack_token = os.environ.get("SLACK_API_TOKEN")
     channel_id = os.environ.get("CHANNEL_ID")
@@ -148,16 +158,6 @@ def get_name(symbol, client):
         
 def get_logo_url(symbol, client):
     try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS logo (
-                id SERIAL PRIMARY KEY,
-                symbol VARCHAR(255) UNIQUE,
-                name VARCHAR(255),
-                url VARCHAR(255)
-            )
-        """)
-        conn.commit()
-        
         trunc_symbol = symbol[:symbol.find('.')] if '.' in symbol else symbol
         
         cursor.execute("SELECT url, name FROM logo WHERE symbol = %s", (trunc_symbol,))
