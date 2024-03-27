@@ -7,11 +7,37 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import subprocess
 from operator import itemgetter
-
+import psycopg2
+import requests
+import time
 
 app = Flask(__name__)
 last_api_call_time = time.time()
 load_dotenv()
+
+DB_NAME_MAIN = os.environ.get("DB_NAME")
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
+DB_HOST = os.environ.get("DB_HOST")
+DB_PORT = os.environ.get("DB_PORT")
+conn = psycopg2.connect(
+    dbname=DB_NAME_MAIN,
+    user=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=DB_PORT
+)
+
+cursor = conn.cursor()
+
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS logo (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) UNIQUE,
+        url VARCHAR(255)
+    )
+""")
+conn.commit()
 
 def send_slack_message(message):
     slack_token = os.environ.get("SLACK_API_TOKEN")
@@ -118,6 +144,87 @@ def get_balance():
     return jsonify({'balance': data['margin_free'], 'total_balance': data['balance'], 'open_trades' : len(data_open)}), 200
     
     
+def get_logo_url(name):
+    try:
+        DB_NAME_MAIN = os.environ.get("DB_NAME")
+        DB_USER = os.environ.get("DB_USER")
+        DB_PASSWORD = os.environ.get("DB_PASSWORD")
+        DB_HOST = os.environ.get("DB_HOST")
+        DB_PORT = os.environ.get("DB_PORT")
+
+        conn = psycopg2.connect(
+            dbname=DB_NAME_MAIN,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
+        )
+
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS logo (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) UNIQUE,
+                url VARCHAR(255)
+            )
+        """)
+        conn.commit()
+        
+        cursor.execute("SELECT url FROM logo WHERE name = %s", (name,))
+        existing_url = cursor.fetchone()
+        if existing_url:
+            conn.close()
+            return existing_url[0]
+
+        url = 'https://raw.githubusercontent.com/nvstly/icons/main/' 
+        ticker_folder = url + 'ticker_icons/'
+        forex_folder = url + 'forex_icons/'
+        crypto_folder = url + 'crypto_icons/'
+        
+        response = None
+        
+        try:
+            response = requests.get(forex_folder + name + '.png')
+        except requests.RequestException as e:
+            pass
+        
+        if response and response.status_code == 200:
+            logo_url = response.url
+        else:
+            try:
+                response = requests.get(ticker_folder + name + '.png')
+            except requests.RequestException as e:
+                pass
+        
+            if response and response.status_code == 200:
+                logo_url = response.url
+            else:
+                try:
+                    response = requests.get(crypto_folder + name + '.png')
+                except requests.RequestException as e:
+                    pass
+                
+                if response and response.status_code == 200:
+                    logo_url = response.url
+                else:
+                    logo_url = None
+        
+        
+        cursor.execute("INSERT INTO logo (name, url) VALUES (%s, %s)", (name, logo_url))
+        conn.commit()
+        
+        conn.close()
+        return logo_url
+    
+    except psycopg2.Error as e:
+        print("A database error occurred:", e)
+        return None
+    except requests.RequestException as e:
+        print("A request error occurred:", e)
+        return None
+
+    
 @app.route('/trade-history', methods=['POST'])
 def get_trade_history():
     data = request.json
@@ -142,6 +249,11 @@ def get_trade_history():
     
     data_open = client.commandExecute("getTrades", args)['returnData']
     data = data_open + data_history
+    
+    for row in data:
+        trunc_symbol = row['symbol'][:row['symbol'].find('.')] if '.' in row['symbol'] else row['symbol']
+        row['image_url'] = get_logo_url(trunc_symbol)
+    
     sorted_data = sorted(data, key=itemgetter('open_time'))  # Sort by open time
     client.disconnect()
     
@@ -194,7 +306,11 @@ def get_closed_trades():
     }
 
     data = client.commandExecute("getTradesHistory", args)['returnData']
-    filtered_data = [trade for trade in data if trade.get('closed', False)]
+    
+    for row in data:
+        trunc_symbol = row['symbol'][:row['symbol'].find('.')] if '.' in row['symbol'] else row['symbol']
+        row['image_url'] = get_logo_url(trunc_symbol)
+    
     client.disconnect()
     
     return jsonify({'closed_trades': data}), 200
@@ -213,6 +329,10 @@ def get_open_trades():
     args =  {
 		"openedOnly": True,
 	}
+    
+    for row in data:
+        trunc_symbol = row['symbol'][:row['symbol'].find('.')] if '.' in row['symbol'] else row['symbol']
+        row['image_url'] = get_logo_url(trunc_symbol)
     
     data = client.commandExecute("getTrades", args)['returnData']
     
