@@ -651,19 +651,22 @@ def copy_all_to_users(users, masters, master_balances):
         forex_multiplier = user[8]
         
         if copy_prev:
-            user_client = APIClient()
-            loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
-            
-            if masters[master_id][1]:
-                master_balance = master_balances[user[5]]
-                user_balance = allocated_amount if allocated_amount else get_balance_user(user_client)
-                V = user_balance / master_balance       
-            else:
-                V = forex_multiplier
-            
-            trades_data = get_trades(masters[master_id][0])
-            copy_all_make_trade(user_client, trades_data, V, master_id, forex_multiplier)
-    
+            try:
+                user_client = APIClient()
+                loginResponse = user_client.execute(loginCommand(userId=user[1], password=decrypt(user[2])))
+                
+                if masters[master_id][1]:
+                    master_balance = master_balances[user[5]]
+                    user_balance = allocated_amount if allocated_amount else get_balance_user(user_client)
+                    V = user_balance / master_balance       
+                else:
+                    V = forex_multiplier
+                
+                trades_data = get_trades(masters[master_id][0])
+                copy_all_make_trade(user_client, trades_data, V, master_id, forex_multiplier)
+            except:
+                pass
+        
             update_copy_prev(connection_id, False)
         
 def copy_products_dict():
