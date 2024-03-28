@@ -427,20 +427,17 @@ def get_news():
         for i in range(1, 10):
             try:
                 args = {
-                    "end": current_timestamp - 50000000 * (i - 1),
-                    "start": current_timestamp - 50000000 * i
+                    "end": current_timestamp - 1500000 * (i - 1),
+                    "start": current_timestamp - 1500000 * i
                 }
                 
                 response = client.commandExecute("getNews", args)   
                 
                 for item in response['returnData']:
                     total_data.add(tuple(item.items()))
+                    
             except:
-                pass
-            
-
-            
-            # time.sleep(2)
+                break
 
         client.disconnect()
 
