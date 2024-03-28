@@ -175,7 +175,7 @@ def get_logo_url(symbol, client):
         response = None
         
         try:
-            response = requests.get(forex_folder + trunc_symbol + '.png')
+            response = requests.get(xstation_url + symbol.lower() + '.svg')
         except requests.RequestException as e:
             pass
         
@@ -183,7 +183,7 @@ def get_logo_url(symbol, client):
             logo_url = response.url
         else:
             try:
-                response = requests.get(ticker_folder + trunc_symbol + '.png')
+                response = requests.get(forex_folder + trunc_symbol + '.png')
             except requests.RequestException as e:
                 pass
         
@@ -191,7 +191,7 @@ def get_logo_url(symbol, client):
                 logo_url = response.url
             else:
                 try:
-                    response = requests.get(crypto_folder + trunc_symbol + '.png')
+                    response = requests.get(ticker_folder + trunc_symbol + '.png')
                 except requests.RequestException as e:
                     pass
                 
@@ -199,7 +199,7 @@ def get_logo_url(symbol, client):
                     logo_url = response.url
                 else:
                     try:
-                        response = requests.get(xstation_url + symbol.lower() + '.svg')
+                        response = requests.get(crypto_folder + trunc_symbol + '.png')
                     except requests.RequestException as e:
                         pass
                     
@@ -207,6 +207,7 @@ def get_logo_url(symbol, client):
                         logo_url = response.url
                     else:
                         logo_url = None
+
         
         cursor.execute("INSERT INTO logo (symbol, name, url) VALUES (%s, %s, %s)", (trunc_symbol, name, logo_url))
         conn.commit()
