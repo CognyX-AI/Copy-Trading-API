@@ -442,6 +442,13 @@ def get_news():
         client.disconnect()
 
         total_data = [dict(item) for item in total_data]
+        
+        for data in total_data:
+            if any('\u0600' <= char <= '\u06FF' for char in data['title']):
+                data['is_arabic'] = True
+            else:
+                data['is_arabic'] = False
+        
         return jsonify({'news': list(total_data)}), 200
     
     except:
