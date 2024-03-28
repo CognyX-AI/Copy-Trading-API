@@ -315,10 +315,10 @@ def get_open_trades():
 		"openedOnly": True,
 	}
     
+    data = client.commandExecute("getTrades", args)['returnData']
+    
     for row in data:
         row['image_url'], row['symbol_name'] = get_logo_url(row['symbol'], client)
-    
-    data = client.commandExecute("getTrades", args)['returnData']
     
     return jsonify({'open_trades': data}), 200
 
