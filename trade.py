@@ -606,7 +606,7 @@ def copy_all_make_trade(user_client, trades_data, V, master_id, forex_multiplier
             
             category = get_symbol_cateogry(user_client, trade['symbol'])
             
-            if not trade['is_stock'] or category in ("FX", "CMD"):
+            if category in ("FX", "CMD"):
                 Vx = forex_multiplier if forex_multiplier else 1    
             else:    
                 Vx = V
