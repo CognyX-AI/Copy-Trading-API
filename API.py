@@ -390,7 +390,7 @@ def close_trade():
     try:            
         data = client.commandExecute("tradeTransaction", args)['returnData']
     except:
-        return jsonify({'message':"Markets are closed"}), 400
+        return jsonify({'message':"Trade could not be closed since the markets are closed, kindly try later"}), 400
                     
     time.sleep(1)
                     
