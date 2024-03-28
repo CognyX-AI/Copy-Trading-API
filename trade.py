@@ -598,23 +598,30 @@ def update_copy_prev(connection_id, copy_prev):
         print("Error while updating verification status:", error)
 
 
-def copy_all_make_trade(user_client, trades_data, V):
+def copy_all_make_trade(user_client, trades_data, V, master_id, forex_multiplier):
     for trade in trades_data:
         try:
             if round((trade['volume'] * V), 2) <= 0:
                     return
-                
+            
+            category = get_symbol_cateogry(user_client, trade['symbol'])
+            
+            if not trade['is_stock'] or category in ("FX", "CMD"):
+                Vx = forex_multiplier if forex_multiplier else 1    
+            else:    
+                Vx = V
+            
             args = {
                 "tradeTransInfo": {
                 "cmd": trade['cmd'],
-                "comment": str(trade['order']),
+                "comment": master_id + ' ' + str(trade['order']),
                 "expiration": 0,
                 "price": trade['open_price'],
                 "sl": trade['sl'],
                 "tp": trade['tp'],
                 "symbol": trade['symbol'],
                 "type": 0,
-                "volume": round((trade['volume'] * V), 2)
+                "volume": round((trade['volume'] * Vx), 2)
                 }
             }
                     
@@ -655,7 +662,7 @@ def copy_all_to_users(users, masters, master_balances):
                 V = forex_multiplier
             
             trades_data = get_trades(masters[master_id][0])
-            copy_all_make_trade(user_client, trades_data, V)
+            copy_all_make_trade(user_client, trades_data, V, master_id, forex_multiplier)
     
             update_copy_prev(connection_id, False)
         

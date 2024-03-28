@@ -7,12 +7,39 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import subprocess
 from operator import itemgetter
-
+import psycopg2
+import requests
+import time
 
 app = Flask(__name__)
 last_api_call_time = time.time()
 load_dotenv()
 
+DB_NAME_MAIN = os.environ.get("DB_NAME")
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
+DB_HOST = os.environ.get("DB_HOST")
+DB_PORT = os.environ.get("DB_PORT")
+conn = psycopg2.connect(
+    dbname=DB_NAME_MAIN,
+    user=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=DB_PORT
+)
+
+cursor = conn.cursor()
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS logo (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(255) UNIQUE,
+        name VARCHAR(255),
+        url VARCHAR(255)
+    )
+""")
+conn.commit()
+        
+                
 def send_slack_message(message):
     slack_token = os.environ.get("SLACK_API_TOKEN")
     channel_id = os.environ.get("CHANNEL_ID")
@@ -118,6 +145,73 @@ def get_balance():
     return jsonify({'balance': data['margin_free'], 'total_balance': data['balance'], 'open_trades' : len(data_open)}), 200
     
     
+def get_name(symbol, client):
+    try:
+        args = {
+            "symbol": symbol
+        }  
+        data = client.commandExecute("getSymbol", args)['returnData']
+        
+        return data['description']
+    except:
+        return None
+        
+def get_logo_url(symbol, client):
+    try:
+        trunc_symbol = symbol[:symbol.find('.')] if '.' in symbol else symbol
+        
+        cursor.execute("SELECT url, name FROM logo WHERE symbol = %s", (trunc_symbol,))
+        existing_entry = cursor.fetchone()
+        if existing_entry:
+            return existing_entry[0], existing_entry[1]
+
+        name = get_name(symbol, client)
+        url = 'https://raw.githubusercontent.com/nvstly/icons/main/' 
+        ticker_folder = url + 'ticker_icons/'
+        forex_folder = url + 'forex_icons/'
+        crypto_folder = url + 'crypto_icons/'
+        
+        response = None
+        
+        try:
+            response = requests.get(forex_folder + trunc_symbol + '.png')
+        except requests.RequestException as e:
+            pass
+        
+        if response and response.status_code == 200:
+            logo_url = response.url
+        else:
+            try:
+                response = requests.get(ticker_folder + trunc_symbol + '.png')
+            except requests.RequestException as e:
+                pass
+        
+            if response and response.status_code == 200:
+                logo_url = response.url
+            else:
+                try:
+                    response = requests.get(crypto_folder + trunc_symbol + '.png')
+                except requests.RequestException as e:
+                    pass
+                
+                if response and response.status_code == 200:
+                    logo_url = response.url
+                else:
+                    logo_url = None
+        
+        cursor.execute("INSERT INTO logo (symbol, name, url) VALUES (%s, %s, %s)", (trunc_symbol, name, logo_url))
+        conn.commit()
+        
+        return logo_url, name
+    
+    except psycopg2.Error as e:
+        print("A database error occurred:", e)
+        return None, None
+    except requests.RequestException as e:
+        print("A request error occurred:", e)
+        return None, None
+
+    
 @app.route('/trade-history', methods=['POST'])
 def get_trade_history():
     data = request.json
@@ -142,6 +236,10 @@ def get_trade_history():
     
     data_open = client.commandExecute("getTrades", args)['returnData']
     data = data_open + data_history
+    
+    for row in data:
+        row['image_url'], row['symbol_name'] = get_logo_url(row['symbol'], client)
+    
     sorted_data = sorted(data, key=itemgetter('open_time'))  # Sort by open time
     client.disconnect()
     
@@ -194,7 +292,10 @@ def get_closed_trades():
     }
 
     data = client.commandExecute("getTradesHistory", args)['returnData']
-    filtered_data = [trade for trade in data if trade.get('closed', False)]
+    
+    for row in data:
+        row['image_url'], row['symbol_name'] = get_logo_url(row['symbol'], client)
+    
     client.disconnect()
     
     return jsonify({'closed_trades': data}), 200
@@ -215,6 +316,9 @@ def get_open_trades():
 	}
     
     data = client.commandExecute("getTrades", args)['returnData']
+    
+    for row in data:
+        row['image_url'], row['symbol_name'] = get_logo_url(row['symbol'], client)
     
     return jsonify({'open_trades': data}), 200
 
@@ -318,24 +422,30 @@ def get_news():
         loginResponse = client.execute(loginCommand(userId=user_id, password=password))
         
         current_timestamp = int(time.time() * 1000) 
-        try:
-            args = {
-                "end": current_timestamp,
-                "start": current_timestamp - 5000000
-            }
+        total_data = set()
+        
+        for i in range(1, 10):
+            try:
+                args = {
+                    "end": current_timestamp - 50000000 * (i - 1),
+                    "start": current_timestamp - 50000000 * i
+                }
+                
+                response = client.commandExecute("getNews", args)   
+                
+                for item in response['returnData']:
+                    total_data.add(tuple(item.items()))
+            except:
+                pass
             
-            response = client.commandExecute("getNews", args)   
-        except:
-            args = {
-                "end": current_timestamp,
-                "start": current_timestamp - 2000000
-            }
+
             
-            response = client.commandExecute("getNews", args)  
-            
+            # time.sleep(2)
+
         client.disconnect()
 
-        return jsonify({'news': response['returnData']}), 200
+        total_data = [dict(item) for item in total_data]
+        return jsonify({'news': list(total_data)}), 200
     
     except:
         return jsonify({'message':"News could not be found."}), 500
