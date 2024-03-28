@@ -170,6 +170,7 @@ def get_logo_url(symbol, client):
         ticker_folder = url + 'ticker_icons/'
         forex_folder = url + 'forex_icons/'
         crypto_folder = url + 'crypto_icons/'
+        xstation_url = 'https://logos.xtb.com/'
         
         response = None
         
@@ -197,7 +198,15 @@ def get_logo_url(symbol, client):
                 if response and response.status_code == 200:
                     logo_url = response.url
                 else:
-                    logo_url = None
+                    try:
+                        response = requests.get(xstation_url + symbol.lower() + '.svg')
+                    except requests.RequestException as e:
+                        pass
+                    
+                    if response and response.status_code == 200:
+                        logo_url = response.url
+                    else:
+                        logo_url = None
         
         cursor.execute("INSERT INTO logo (symbol, name, url) VALUES (%s, %s, %s)", (trunc_symbol, name, logo_url))
         conn.commit()
